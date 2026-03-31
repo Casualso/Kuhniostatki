@@ -417,75 +417,56 @@
         if (btn) btn.style.display = syncEnabled() ? '' : 'none';
     }
 
-    async function pushToCloud() {
-        if (!syncEnabled() || syncInProgress) return;
-        syncInProgress = true;
-        setSyncStatus('loading', 'Сохранение в облако…');
-        const payload = { inventory, suppliers, categories, subcategories, kits, groupBy };
-        try {
-            const res = await fetch(`${JSONBIN_BASE}/${syncBinId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Master-Key': syncApiKey,
-                    'X-Access-Key': syncApiKey   // некоторые версии JSONBin требуют этот заголовок
-                },
-                body: JSON.stringify(payload)
-            });
-            if (res.status === 401 || res.status === 403) {
-                const hint = res.status === 403
-                    ? 'Доступ запрещён (403). Проверьте: 1) Master Key скопирован полностью без пробелов, 2) Bin ID верный (только цифры после /b/)'
-                    : 'Неверный ключ (401). Скопируйте Master Key заново из Account → API Keys';
-                setSyncStatus('error', hint);
-                syncInProgress = false; return;
-            }
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            setSyncStatus('ok', 'Сохранено · ' + new Date().toLocaleTimeString());
-        } catch(e) {
-            setSyncStatus('error', 'Ошибка: ' + e.message);
-        } finally { syncInProgress = false; }
-    }
-
-    async function pullFromCloud() {
-        if (!syncEnabled()) return false;
-        setSyncStatus('loading', 'Загрузка из облака…');
-        try {
-            const res = await fetch(`${JSONBIN_BASE}/${syncBinId}/latest`, {
-                headers: {
-                    'X-Master-Key': syncApiKey,
-                    'X-Access-Key': syncApiKey,
-                    'X-Bin-Meta':   'false'
-                }
-            });
-            if (res.status === 401 || res.status === 403) {
-                setSyncStatus('error', res.status === 403
-                    ? '403: Проверьте Master Key и Bin ID — вставьте их заново'
-                    : '401: Неверный Master Key');
-                return false;
-            }
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            // Merge cloud data into local state
-            if (Array.isArray(data.inventory))    inventory    = data.inventory;
-            if (Array.isArray(data.suppliers))     suppliers    = data.suppliers;
-            if (Array.isArray(data.categories))    categories   = data.categories;
-            if (Array.isArray(data.subcategories)) subcategories= data.subcategories;
-            if (Array.isArray(data.kits))          kits         = data.kits;
-            if (data.groupBy)                      groupBy      = data.groupBy;
-            // Also persist locally for offline fallback
-            localStorage.setItem('inventory',    JSON.stringify(inventory));
-            localStorage.setItem('suppliers',    JSON.stringify(suppliers));
-            localStorage.setItem('categories',   JSON.stringify(categories));
-            localStorage.setItem('subcategories',JSON.stringify(subcategories));
-            localStorage.setItem('kits',         JSON.stringify(kits));
-            localStorage.setItem('groupBy',      groupBy);
-            setSyncStatus('ok', 'Загружено из облака · ' + new Date().toLocaleTimeString());
-            return true;
-        } catch(e) {
-            setSyncStatus('error', 'Ошибка загрузки: ' + e.message);
-            return false;
+async function pushToCloud() {
+    if (!syncEnabled() || syncInProgress) return;
+    syncInProgress = true;
+    setSyncStatus('loading', 'Сохранение в облако…');
+    const payload = { inventory, suppliers, categories, subcategories, kits, groupBy };
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${syncBinId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': syncApiKey   // ← ТОЛЬКО этот заголовок
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
+        setSyncStatus('ok', 'Сохранено · ' + new Date().toLocaleTimeString());
+    } catch(e) {
+        console.error(e);
+        setSyncStatus('error', 'Ошибка: ' + e.message);
+    } finally { syncInProgress = false; }
+}
+
+async function pullFromCloud() {
+    if (!syncEnabled()) return false;
+    setSyncStatus('loading', 'Загрузка из облака…');
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${syncBinId}/latest`, {
+            headers: { 'X-Master-Key': syncApiKey }   // ← ТОЛЬКО этот заголовок
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        // JSONBin возвращает { record: {...}, metadata: {...} }
+        const record = data.record || data;
+        inventory    = record.inventory || [];
+        suppliers    = record.suppliers || ['Из 1С'];
+        categories   = record.categories || ['Корпуса'];
+        subcategories= record.subcategories || [];
+        kits         = record.kits || [];
+        groupBy      = record.groupBy || 'none';
+        saveAll();
+        setSyncStatus('ok', 'Загружено из облака · ' + new Date().toLocaleTimeString());
+        return true;
+    } catch(e) {
+        setSyncStatus('error', 'Ошибка загрузки: ' + e.message);
+        return false;
     }
+}
 
     // Debounced push — не спамим запросами при быстрых изменениях
     let pushTimer = null;
