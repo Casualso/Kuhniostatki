@@ -1307,13 +1307,17 @@ async function pullFromCloud() {
         document.getElementById('massSubcategorySelect').innerHTML = '<option value="">Изменить подкатегорию на...</option><option value="">(без подкатегории)</option>' + subcategories.map(sc => `<option>${escapeHtml(sc)}</option>`).join('');
     }
 
-    function exportCSV() {
-        const headers = ['Наименование', 'Категория', 'Поставщик', 'Подкатегория', 'Остаток', 'Минимальный остаток'];
-        const rows = inventory.map(i => [i.name, i.category, i.supplier, i.subcategory, i.stock, i.minStock]);
-        const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-        const blob = new Blob(["\uFEFF" + csv], {type: 'text/csv;charset=utf-8;'});
-        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'ostatki_kuhni.csv'; link.click(); URL.revokeObjectURL(blob);
-    }
+function exportCSV() {
+    const headers = ['Наименование', 'Категория', 'Поставщик', 'Подкатегория', 'Остаток', 'Минимальный остаток'];
+    const rows = inventory.map(i => [i.name, i.category, i.supplier, i.subcategory, i.stock, i.minStock]);
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(["\uFEFF" + csv], {type: 'text/csv;charset=utf-8;'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'ostatki_kuhni.csv';
+    link.click();
+    URL.revokeObjectURL(blob);
+}
 
   function importCSV(file) {
     const reader = new FileReader();
