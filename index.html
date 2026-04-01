@@ -1361,7 +1361,23 @@
             }
             if (newItems.length) { inventory.push(...newItems); saveAll(); alert(`Импортировано ${newItems.length} товаров`); } else alert('Не удалось распознать данные CSV');
         };
-        reader.readAsText(file, 'UTF-8');
+        // Detect encoding: check for UTF-8 BOM (0xEF 0xBB 0xBF) or try UTF-8, fallback to windows-1251
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            // Check for UTF-8 BOM
+            const hasUtf8Bom = bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF;
+            const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => {
+                const txt = te.target.result;
+                // If windows-1251 decode also looks broken, try UTF-8
+                const fakeE = { target: { result: txt } };
+                reader.onload(fakeE);
+            };
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
     }
 
     function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
@@ -1485,8 +1501,7 @@
 
         const csvInput = byId('importCsvInput');
         if (csvInput) {
-            const csvLabel = document.querySelector('label[for="importCsvInput"]');
-            if (csvLabel) csvLabel.addEventListener('click', () => csvInput.click());
+            // Note: label[for="importCsvInput"] already triggers input natively — no extra click() needed
             csvInput.addEventListener('change', e => { if (e.target.files[0]) importCSV(e.target.files[0]); csvInput.value = ''; });
         }
 
