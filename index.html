@@ -1335,51 +1335,95 @@
     }
 
     function importCSV(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target.result;
-            const lines = text.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) { alert('Файл пуст'); return; }
-            const newItems = [];
-            for (let i=1; i<lines.length; i++) {
-                const parts = lines[i].match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
-                if (!parts || parts.length < 6) continue;
-                let name = parts[0].replace(/^"|"$/g, '').replace(/""/g, '"');
-                let category = parts[1].replace(/^"|"$/g, '');
-                let supplier = parts[2].replace(/^"|"$/g, '');
-                let subcategory = parts[3].replace(/^"|"$/g, '');
-                let stock = parseInt(parts[4],10);
-                let minStock = parseInt(parts[5],10);
-                if (isNaN(stock)) stock = 0;
-                if (isNaN(minStock)) minStock = 5;
-                if (name) {
-                    if (!categories.includes(category)) categories.push(category);
-                    if (!suppliers.includes(supplier)) suppliers.push(supplier);
-                    if (subcategory && !subcategories.includes(subcategory)) subcategories.push(subcategory);
-                    newItems.push({ id: Date.now()+'-'+i, name: name.trim(), category: category || 'Прочее', supplier: supplier || 'Другой', subcategory: subcategory || '', stock, minStock });
+        // Robust CSV parser: handles empty fields, quoted commas, BOM, windows-1251
+        function parseCSVLine(line) {
+            const cols = [];
+            let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (inQ && line[i+1] === '"') { cur += '"'; i++; }  // escaped quote
+                    else inQ = !inQ;
+                } else if (ch === ',' && !inQ) {
+                    cols.push(cur); cur = '';
+                } else {
+                    cur += ch;
                 }
             }
-            if (newItems.length) { inventory.push(...newItems); saveAll(); alert(`Импортировано ${newItems.length} товаров`); } else alert('Не удалось распознать данные CSV');
-        };
-        // Detect encoding: check for UTF-8 BOM (0xEF 0xBB 0xBF) or try UTF-8, fallback to windows-1251
+            cols.push(cur);
+            return cols.map(v => v.trim());
+        }
+
+        function processText(text) {
+            // Strip BOM if present
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) { alert('Файл пуст'); return; }
+
+            const headers = parseCSVLine(lines[0]);
+            // Find column indices by header name (case-insensitive partial match)
+            const find = (kw) => headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
+            const nIdx   = find('Наименован');
+            const cIdx   = find('Категори');
+            const supIdx = find('Поставщик');
+            const subIdx = find('Подкатегори');
+            const sIdx   = find('Остаток');
+            const mIdx   = find('Минимальн');
+
+            if (nIdx === -1 || sIdx === -1) {
+                alert(`Не найдены колонки "Наименование" или "Остаток".\nЗаголовки: ${headers.join(', ')}`);
+                return;
+            }
+
+            let updated = 0, added = 0, skipped = 0;
+            for (let i = 1; i < lines.length; i++) {
+                const row = parseCSVLine(lines[i]);
+                const name = row[nIdx];
+                if (!name) { skipped++; continue; }
+
+                // Parse stock — handle spaces, comma as decimal separator
+                const parseNum = (v, def) => {
+                    if (v === undefined || v === '') return def;
+                    const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
+                    return isNaN(n) ? def : Math.round(n);
+                };
+
+                const stock    = parseNum(row[sIdx], 0);
+                const minStock = parseNum(mIdx !== -1 ? row[mIdx] : '', 5);
+                const cat  = (cIdx   !== -1 && row[cIdx])   ? row[cIdx]   : 'Прочее';
+                const sup  = (supIdx !== -1 && row[supIdx])  ? row[supIdx] : 'Другой';
+                const sub  = (subIdx !== -1 && row[subIdx])  ? row[subIdx] : '';
+
+                if (!categories.includes(cat))             categories.push(cat);
+                if (!suppliers.includes(sup))               suppliers.push(sup);
+                if (sub && !subcategories.includes(sub))   subcategories.push(sub);
+
+                const ex = inventory.find(it => it.name.toLowerCase() === name.toLowerCase());
+                if (ex) {
+                    ex.category = cat; ex.supplier = sup; ex.subcategory = sub;
+                    ex.stock = stock; ex.minStock = minStock;
+                    updated++;
+                } else {
+                    inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
+                    added++;
+                }
+            }
+            saveAll();
+            alert(`✅ CSV импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено: ${skipped}`);
+        }
+
+        // Auto-detect encoding: check for UTF-8 BOM, else try windows-1251
         const binReader = new FileReader();
         binReader.onload = (be) => {
             const bytes = new Uint8Array(be.target.result);
-            // Check for UTF-8 BOM
-            const hasUtf8Bom = bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF;
+            const hasUtf8Bom = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
             const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
             const txtReader = new FileReader();
-            txtReader.onload = (te) => {
-                const txt = te.target.result;
-                // If windows-1251 decode also looks broken, try UTF-8
-                const fakeE = { target: { result: txt } };
-                reader.onload(fakeE);
-            };
+            txtReader.onload = (te) => processText(te.target.result);
             txtReader.readAsText(file, enc);
         };
         binReader.readAsArrayBuffer(file);
     }
-
     function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
 
     document.addEventListener('DOMContentLoaded', async () => {
