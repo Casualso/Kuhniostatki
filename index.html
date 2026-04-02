@@ -213,8 +213,25 @@
                 <h2 style="margin:0; font-size:1.2rem; color:#1e293b;">🧩 Наборы / комплекты</h2>
                 <div style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">Остаток набора = минимум среди всех его позиций</div>
             </div>
-            <button id="newKitBtn">➕ Создать набор</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="newKitBtn">➕ Создать набор</button>
+                <label for="importKitsTxtInput" class="btn-outline" style="cursor:pointer;display:inline-flex;align-items:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;">📋 Импорт из TXT</label>
+                <input type="file" id="importKitsTxtInput" accept=".txt" style="display:none;">
+            </div>
         </div>
+
+        <!-- Формат TXT файла (подсказка) -->
+        <details style="margin-bottom:12px;">
+            <summary style="font-size:0.72rem;color:#94a3b8;cursor:pointer;user-select:none;">📄 Формат TXT файла для импорта наборов</summary>
+            <div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;font-size:0.75rem;color:#475569;line-height:1.8;">
+                Каждая строка — один набор:<br>
+                <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">Название набора; Тип шкафа; артикул1:кол-во; артикул2:кол-во; ...</code><br><br>
+                Пример:<br>
+                <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">Верхний шкаф 1дв. 600мм Белый альпийский; Верхние; 402419 068:1; 123456 001:1</code><br>
+                <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">Нижний шкаф 3 ящ. 600мм Луиджи; Нижние; 402431 244:3; 654321 001:1</code><br><br>
+                Артикулы — цифровые, из первого столбца вашего Excel (1С).
+            </div>
+        </details>
 
         <!-- Фильтр и группировка наборов -->
         <div class="kit-filter-bar">
@@ -366,7 +383,7 @@
         <table id="inventoryTable">
             <thead>
                 <tr><th class="checkbox-col"><input type="checkbox" id="selectAllCheckbox"></th>
-                <th>Наименование</th><th>Категория</th><th>Поставщик</th><th>Подкатегория</th><th>Остаток</th><th>Мин. остаток</th><th style="width:60px"></th>
+                <th>Артикул</th><th>Наименование</th><th>Категория</th><th>Поставщик</th><th>Подкатегория</th><th>Остаток</th><th>Мин. остаток</th><th style="width:60px"></th>
                 </thead>
             <tbody id="tableBody"></tbody>
           </table>
@@ -509,6 +526,7 @@
                     if (!item.category) item.category = 'Прочее';
                     if (!item.supplier) item.supplier = 'Другой';
                     if (!item.subcategory) item.subcategory = '';
+                    if (!item.artikul) item.artikul = '';
                 });
             } catch(e) { inventory = []; }
         } else {
@@ -598,16 +616,25 @@
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
                 if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
-                let headerRowIndex=-1, nameCol=-1, stockCol=-1;
+
+                // Автопоиск колонок: название, остаток, артикул
+                let headerRowIndex=-1, nameCol=-1, stockCol=-1, artikulCol=-1;
                 for (let i=0; i<Math.min(rows.length,100); i++) {
                     const row=rows[i]; if (!row) continue;
-                    let tn=-1, ts=-1;
+                    let tn=-1, ts=-1, ta=-1;
                     for (let j=0; j<row.length; j++) {
                         const cell=String(row[j]||'').toLowerCase().trim();
                         if (cell.includes('номенклат')||cell.includes('наименован')||cell==='товар') tn=j;
                         if (cell==='в наличии'||cell.includes('наличи')||cell.includes('конечный остаток')||cell==='остаток'||cell.includes('остат')||cell==='количество'||cell.includes('кол-во')||cell.includes('кол.')) ts=j;
+                        if (cell==='артикул'||cell.includes('артикул')||cell==='код'||cell==='арт.') ta=j;
                     }
-                    if (tn!==-1&&ts!==-1) { nameCol=tn; stockCol=ts; headerRowIndex=i; break; }
+                    if (tn!==-1&&ts!==-1) {
+                        nameCol=tn; stockCol=ts;
+                        // Артикул: если не найден по заголовку — ищем колонку левее названия с числовыми значениями
+                        if (ta!==-1) { artikulCol=ta; }
+                        else if (tn>0) { artikulCol=tn-1; } // колонка прямо перед названием
+                        headerRowIndex=i; break;
+                    }
                 }
                 if (headerRowIndex===-1||nameCol===-1||stockCol===-1) {
                     let preview='';
@@ -615,11 +642,15 @@
                     if (!confirm('Колонки не найдены автоматически.\n\n'+preview+'\nУказать вручную?')) { alert('Импорт отменён.'); return; }
                     nameCol=parseInt(prompt('Колонка с названием (1=первая):','5'),10)-1;
                     stockCol=parseInt(prompt('Колонка с остатком (1=первая):','7'),10)-1;
+                    artikulCol=parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):','4'),10)-1;
                     headerRowIndex=parseInt(prompt('Строка заголовка:','1'),10)-1;
                     if (isNaN(nameCol)||isNaN(stockCol)||isNaN(headerRowIndex)) { alert('Некорректный ввод. Отменено.'); return; }
+                    if (artikulCol<0) artikulCol=-1;
                 }
+
                 const SVC=['итого','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад','всего'];
                 const isSvc=n=>{ const l=n.toLowerCase(); return SVC.some(w=>l.includes(w)); };
+
                 const newItems=[]; let upd=0, skip=0;
                 for (let i=headerRowIndex+1; i<rows.length; i++) {
                     const row=rows[i]; if (!row||row.length===0) continue;
@@ -627,15 +658,32 @@
                     if (!name||!name.replace(/\s/g,'')) { skip++; continue; }
                     if (isSvc(name)) { skip++; continue; }
                     if (/^[\d\s\-]+$/.test(name)) { skip++; continue; }
+
+                    // Артикул
+                    let artikul='';
+                    if (artikulCol>=0&&row[artikulCol]!==undefined&&row[artikulCol]!=='') {
+                        artikul=String(row[artikulCol]).trim();
+                    }
+
                     let sr=row[stockCol];
                     if (sr===undefined||sr===null||sr==='') { skip++; continue; }
                     if (typeof sr==='string') sr=sr.replace(/\s/g,'').replace(',','.');
                     const stock=parseFloat(sr);
                     if (isNaN(stock)) { skip++; continue; }
-                    const ex=inventory.find(it=>it.name===name);
-                    if (ex) { ex.stock=Math.round(stock); upd++; }
-                    else newItems.push({ name, stock:Math.round(stock), category:detectCategoryFromName(name), subcategory:detectSubcategoryFromName(name) });
+
+                    // Поиск существующего: сначала по артикулу, потом по названию
+                    let ex = artikul ? inventory.find(it=>it.artikul&&it.artikul===artikul) : null;
+                    if (!ex) ex = inventory.find(it=>it.name===name);
+
+                    if (ex) {
+                        ex.stock=Math.round(stock);
+                        if (artikul) ex.artikul=artikul; // обновляем артикул если появился
+                        upd++;
+                    } else {
+                        newItems.push({ name, artikul, stock:Math.round(stock), category:detectCategoryFromName(name), subcategory:detectSubcategoryFromName(name) });
+                    }
                 }
+
                 if (newItems.length===0&&upd===0) { alert(`Товаров не найдено.\nПропущено: ${skip}`); return; }
                 let added=0;
                 if (newItems.length>0) {
@@ -647,7 +695,7 @@
                     for (const p of newItems) {
                         if (!categories.includes(p.category)) categories.push(p.category);
                         if (p.subcategory&&!subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
-                        inventory.push({ id:Date.now()+'-'+Math.random().toString(36).substr(2,6), name:p.name, category:p.category, supplier, subcategory:p.subcategory, stock:p.stock, minStock:defMin });
+                        inventory.push({ id:Date.now()+'-'+Math.random().toString(36).substr(2,6), name:p.name, artikul:p.artikul||'', category:p.category, supplier, subcategory:p.subcategory, stock:p.stock, minStock:defMin });
                         added++;
                     }
                 }
@@ -1073,7 +1121,7 @@
             if (cat !== 'all' && item.category !== cat) return false;
             if (sup !== 'all' && item.supplier !== sup) return false;
             if (sub !== 'all' && item.subcategory !== sub) return false;
-            if (search && !item.name.toLowerCase().includes(search)) return false;
+            if (search && !item.name.toLowerCase().includes(search) && !(item.artikul||'').toLowerCase().includes(search)) return false;
             return true;
         });
     }
@@ -1181,7 +1229,7 @@
         const isCollapsed = collapsedGroups.has(groupId);
         const indent = level * 20;
         let html = `<tr class="group-row" data-group-id="${groupId}" data-level="${level}" style="cursor:pointer;">
-                        <td colspan="8">
+                        <td colspan="9">
                             <span style="display:inline-block; width:${indent}px;"></span>
                             <strong>📁 ${escapeHtml(group.name)}</strong>
                             <span class="group-summary"> (${group.children.length})</span>
@@ -1206,6 +1254,7 @@
         const checkboxHtml = withCheckbox ? `<td class="checkbox-col"><input type="checkbox" class="item-checkbox" value="${item.id}" ${isChecked}>` : '';
         return `<tr class="${lowClass}" data-id="${item.id}">
                     ${checkboxHtml}
+                    <td style="color:#94a3b8;font-size:0.75rem;white-space:nowrap;">${escapeHtml(item.artikul||'')}</td>
                     <td>${escapeHtml(item.name)}</td>
                     <td><select class="edit-category" data-id="${item.id}">${categories.map(c => `<option value="${escapeHtml(c)}" ${c===item.category?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></td>
                     <td><select class="edit-supplier" data-id="${item.id}">${suppliers.map(s => `<option value="${escapeHtml(s)}" ${s===item.supplier?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></td>
@@ -1327,8 +1376,8 @@
     }
 
     function exportCSV() {
-        const headers = ['Наименование', 'Категория', 'Поставщик', 'Подкатегория', 'Остаток', 'Минимальный остаток'];
-        const rows = inventory.map(i => [i.name, i.category, i.supplier, i.subcategory, i.stock, i.minStock]);
+        const headers = ['Артикул', 'Наименование', 'Категория', 'Поставщик', 'Подкатегория', 'Остаток', 'Минимальный остаток'];
+        const rows = inventory.map(i => [i.artikul||'', i.name, i.category, i.supplier, i.subcategory, i.stock, i.minStock]);
         const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
         const blob = new Blob(["\uFEFF" + csv], {type: 'text/csv;charset=utf-8;'});
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'ostatki_kuhni.csv'; link.click(); URL.revokeObjectURL(blob);
@@ -1424,6 +1473,78 @@
         };
         binReader.readAsArrayBuffer(file);
     }
+    // ── Импорт наборов из TXT ────────────────────────────────
+    // Формат строки: Название; Тип; артикул1:кол-во; артикул2:кол-во; ...
+    function importKitsTxt(file) {
+        function processText(text) {
+            try {
+                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (!lines.length) { alert('Файл пуст'); return; }
+
+                let added = 0, updated = 0, skipped = 0;
+                const notFound = [];
+
+                for (const line of lines) {
+                    const parts = line.split(';').map(p => p.trim()).filter(Boolean);
+                    if (parts.length < 3) { skipped++; continue; }
+
+                    const kitName = parts[0];
+                    const kitType = parts[1];
+                    const kitParts = [];
+
+                    for (let i = 2; i < parts.length; i++) {
+                        const seg = parts[i].trim();
+                        if (!seg) continue;
+                        const colonIdx = seg.lastIndexOf(':');
+                        const artikul  = colonIdx > 0 ? seg.slice(0, colonIdx).trim() : seg;
+                        const qty      = colonIdx > 0 ? parseInt(seg.slice(colonIdx + 1), 10) : 1;
+                        // Поиск по артикулу (без пробелов для надёжности)
+                        const item = inventory.find(it =>
+                            it.artikul && it.artikul.replace(/\s+/g,'') === artikul.replace(/\s+/g,'')
+                        );
+                        if (!item) { notFound.push(`«${artikul}» в «${kitName}»`); continue; }
+                        if (!kitParts.find(p => p.itemId === item.id)) {
+                            kitParts.push({ itemId: item.id, qty: isNaN(qty)||qty<1 ? 1 : qty });
+                        }
+                    }
+
+                    if (!kitParts.length) { skipped++; continue; }
+
+                    const existing = kits.find(k => k.name === kitName);
+                    if (existing) {
+                        existing.kitType = kitType;
+                        existing.parts   = kitParts;
+                        updated++;
+                    } else {
+                        kits.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name: kitName, kitType, supplier:'', tags:[], note:'', parts: kitParts });
+                        added++;
+                    }
+                }
+
+                saveAll();
+
+                let msg = `✅ Импорт наборов завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено (неполные): ${skipped}`;
+                if (notFound.length) {
+                    msg += `\n\n⚠️ Артикулы не найдены (${notFound.length}):\n` + notFound.slice(0,10).join('\n');
+                    if (notFound.length > 10) msg += `\n...и ещё ${notFound.length-10}`;
+                    msg += '\n\nПроверьте что эти товары уже импортированы из Excel.';
+                }
+                alert(msg);
+            } catch(err) { console.error(err); alert('Ошибка: ' + err.message); }
+        }
+
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            const enc = (bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF) ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => processText(te.target.result);
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
+    }
+
     function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
 
     document.addEventListener('DOMContentLoaded', async () => {
@@ -1580,6 +1701,14 @@
         // Наборы
         on('newKitBtn',    'click', () => openKitBuilder(null));
         on('addKitPartBtn','click', () => addKitPartRow());
+
+        const kitsTxtInput = byId('importKitsTxtInput');
+        if (kitsTxtInput) {
+            kitsTxtInput.addEventListener('change', e => {
+                if (e.target.files[0]) importKitsTxt(e.target.files[0]);
+                kitsTxtInput.value = '';
+            });
+        }
         on('saveKitBtn',   'click', saveKit);
         on('cancelKitBtn', 'click', () => {
             const kb = byId('kitBuilder');
