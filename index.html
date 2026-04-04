@@ -1628,113 +1628,63 @@ function importCSV(file) {
         const kitsTxtInput = byId('importKitsTxtInput');
         if (kitsTxtInput) kitsTxtInput.addEventListener('change', e => { if (e.target.files[0]) importKitsTxt(e.target.files[0]); kitsTxtInput.value = ''; });
     });
-    // ========== УПРАВЛЕНИЕ СВОРАЧИВАНИЕМ НАБОРОВ ==========
-// Хранилище состояния свёрнутости наборов (по id)
-let collapsedKitsState = new Set(); // храним id свёрнутых наборов
-
-// Функция сохранения состояния в localStorage
-function saveKitsCollapseState() {
-    localStorage.setItem('collapsedKitsState', JSON.stringify([...collapsedKitsState]));
-}
-
-// Функция загрузки состояния из localStorage
-function loadKitsCollapseState() {
-    const saved = localStorage.getItem('collapsedKitsState');
-    if (saved) {
-        try {
-            collapsedKitsState = new Set(JSON.parse(saved));
-        } catch(e) {}
+// ========== СВОРАЧИВАНИЕ ВСЕГО БЛОКА НАБОРОВ ==========
+(function() {
+    const KITS_SECTION_STORAGE_KEY = 'kitsSectionCollapsed';
+    
+    // Находим контейнер, который содержит весь раздел наборов
+    const kitsSection = document.querySelector('#kitsContainer')?.closest('div[style*="margin-bottom:28px"]');
+    if (!kitsSection) return;
+    
+    // Добавляем кнопку сворачивания рядом с заголовком
+    const headerDiv = kitsSection.querySelector('div[style*="display:flex; align-items:center; justify-content:space-between"]');
+    if (!headerDiv) return;
+    
+    // Проверяем, не добавлена ли уже кнопка
+    if (document.getElementById('toggleKitsSectionBtn')) return;
+    
+    const toggleBtn = document.createElement('button');
+    toggleBtn.id = 'toggleKitsSectionBtn';
+    toggleBtn.className = 'btn-outline';
+    toggleBtn.style.fontSize = '0.75rem';
+    toggleBtn.style.padding = '4px 12px';
+    toggleBtn.textContent = 'Свернуть наборы';
+    
+    headerDiv.appendChild(toggleBtn);
+    
+    // Контент, который будем скрывать: всё, что после заголовка и до следующего элемента (синхронизация)
+    let contentToToggle = [];
+    let next = headerDiv.parentElement?.nextElementSibling;
+    while (next && next.id !== 'syncPanel') {
+        contentToToggle.push(next);
+        next = next.nextElementSibling;
     }
-}
-
-// Функция обновления внешнего вида карточек в соответствии с состоянием
-function applyCollapseStateToCards() {
-    document.querySelectorAll('.kit-card').forEach(card => {
-        const kitId = card.dataset.kitId;
-        if (collapsedKitsState.has(kitId)) {
-            card.classList.remove('open');
+    // Также включаем сам блок с синхронизацией? Нет, синхронизацию не трогаем.
+    
+    function setKitsSectionCollapsed(collapsed) {
+        if (collapsed) {
+            contentToToggle.forEach(el => el.style.display = 'none');
+            toggleBtn.textContent = 'Развернуть наборы';
         } else {
-            card.classList.add('open');
+            contentToToggle.forEach(el => el.style.display = '');
+            toggleBtn.textContent = 'Свернуть наборы';
         }
-    });
-}
-
-// Функция сворачивания всех наборов
-function collapseAllKits() {
-    document.querySelectorAll('.kit-card').forEach(card => {
-        const kitId = card.dataset.kitId;
-        collapsedKitsState.add(kitId);
-        card.classList.remove('open');
-    });
-    saveKitsCollapseState();
-}
-
-// Функция разворачивания всех наборов
-function expandAllKits() {
-    document.querySelectorAll('.kit-card').forEach(card => {
-        const kitId = card.dataset.kitId;
-        collapsedKitsState.delete(kitId);
-        card.classList.add('open');
-    });
-    saveKitsCollapseState();
-}
-
-// Добавляем панель с кнопками сворачивания (если её нет)
-function addCollapseExpandButtons() {
-    if (document.getElementById('kitCollapseExpandBar')) return;
-    const container = document.getElementById('kitsContainer');
-    if (!container) return;
-    const bar = document.createElement('div');
-    bar.id = 'kitCollapseExpandBar';
-    bar.style.marginBottom = '12px';
-    bar.style.display = 'flex';
-    bar.style.gap = '8px';
-    bar.innerHTML = `
-        <button id="collapseAllKitsBtn" class="btn-outline" style="font-size:0.75rem; padding:4px 12px;">📁 Свернуть все наборы</button>
-        <button id="expandAllKitsBtn" class="btn-outline" style="font-size:0.75rem; padding:4px 12px;">📂 Развернуть все наборы</button>
-    `;
-    container.parentNode.insertBefore(bar, container);
-    document.getElementById('collapseAllKitsBtn').addEventListener('click', collapseAllKits);
-    document.getElementById('expandAllKitsBtn').addEventListener('click', expandAllKits);
-}
-
-// Переопределяем обработчик клика по строке набора, чтобы сохранять состояние
-function attachKitToggleHandler() {
-    document.querySelectorAll('.kit-row').forEach(row => {
-        // Убираем старый обработчик, чтобы не дублировать
-        row.removeEventListener('click', kitRowClickHandler);
-        row.addEventListener('click', kitRowClickHandler);
-    });
-}
-
-function kitRowClickHandler(e) {
-    // Если клик по чекбоксу – не сворачиваем
-    if (e.target.classList.contains('kit-select-checkbox')) return;
-    const card = this.closest('.kit-card');
-    if (!card) return;
-    const kitId = card.dataset.kitId;
-    if (card.classList.contains('open')) {
-        card.classList.remove('open');
-        collapsedKitsState.add(kitId);
-    } else {
-        card.classList.add('open');
-        collapsedKitsState.delete(kitId);
+        localStorage.setItem(KITS_SECTION_STORAGE_KEY, collapsed ? '1' : '0');
     }
-    saveKitsCollapseState();
-}
-
-// Модифицируем renderKits, чтобы после отрисовки применить состояние и добавить кнопки
-const originalRenderKits = window.renderKits;
-window.renderKits = function() {
-    if (originalRenderKits) originalRenderKits();
-    addCollapseExpandButtons();
-    loadKitsCollapseState();      // загружаем сохранённое состояние
-    applyCollapseStateToCards();  // применяем к карточкам
-    attachKitToggleHandler();     // вешаем обработчики с сохранением
-};
-
-// Инициализация при загрузке
-loadKitsCollapseState();
+    
+    // Загружаем сохранённое состояние
+    const saved = localStorage.getItem(KITS_SECTION_STORAGE_KEY);
+    if (saved === '1') {
+        setKitsSectionCollapsed(true);
+    } else {
+        setKitsSectionCollapsed(false);
+    }
+    
+    toggleBtn.addEventListener('click', () => {
+        const isCollapsed = toggleBtn.textContent === 'Развернуть наборы';
+        setKitsSectionCollapsed(!isCollapsed);
+    });
+})();
 </script>
 </body>
 </html>
