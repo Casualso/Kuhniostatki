@@ -1628,6 +1628,113 @@ function importCSV(file) {
         const kitsTxtInput = byId('importKitsTxtInput');
         if (kitsTxtInput) kitsTxtInput.addEventListener('change', e => { if (e.target.files[0]) importKitsTxt(e.target.files[0]); kitsTxtInput.value = ''; });
     });
+    // ========== УПРАВЛЕНИЕ СВОРАЧИВАНИЕМ НАБОРОВ ==========
+// Хранилище состояния свёрнутости наборов (по id)
+let collapsedKitsState = new Set(); // храним id свёрнутых наборов
+
+// Функция сохранения состояния в localStorage
+function saveKitsCollapseState() {
+    localStorage.setItem('collapsedKitsState', JSON.stringify([...collapsedKitsState]));
+}
+
+// Функция загрузки состояния из localStorage
+function loadKitsCollapseState() {
+    const saved = localStorage.getItem('collapsedKitsState');
+    if (saved) {
+        try {
+            collapsedKitsState = new Set(JSON.parse(saved));
+        } catch(e) {}
+    }
+}
+
+// Функция обновления внешнего вида карточек в соответствии с состоянием
+function applyCollapseStateToCards() {
+    document.querySelectorAll('.kit-card').forEach(card => {
+        const kitId = card.dataset.kitId;
+        if (collapsedKitsState.has(kitId)) {
+            card.classList.remove('open');
+        } else {
+            card.classList.add('open');
+        }
+    });
+}
+
+// Функция сворачивания всех наборов
+function collapseAllKits() {
+    document.querySelectorAll('.kit-card').forEach(card => {
+        const kitId = card.dataset.kitId;
+        collapsedKitsState.add(kitId);
+        card.classList.remove('open');
+    });
+    saveKitsCollapseState();
+}
+
+// Функция разворачивания всех наборов
+function expandAllKits() {
+    document.querySelectorAll('.kit-card').forEach(card => {
+        const kitId = card.dataset.kitId;
+        collapsedKitsState.delete(kitId);
+        card.classList.add('open');
+    });
+    saveKitsCollapseState();
+}
+
+// Добавляем панель с кнопками сворачивания (если её нет)
+function addCollapseExpandButtons() {
+    if (document.getElementById('kitCollapseExpandBar')) return;
+    const container = document.getElementById('kitsContainer');
+    if (!container) return;
+    const bar = document.createElement('div');
+    bar.id = 'kitCollapseExpandBar';
+    bar.style.marginBottom = '12px';
+    bar.style.display = 'flex';
+    bar.style.gap = '8px';
+    bar.innerHTML = `
+        <button id="collapseAllKitsBtn" class="btn-outline" style="font-size:0.75rem; padding:4px 12px;">📁 Свернуть все наборы</button>
+        <button id="expandAllKitsBtn" class="btn-outline" style="font-size:0.75rem; padding:4px 12px;">📂 Развернуть все наборы</button>
+    `;
+    container.parentNode.insertBefore(bar, container);
+    document.getElementById('collapseAllKitsBtn').addEventListener('click', collapseAllKits);
+    document.getElementById('expandAllKitsBtn').addEventListener('click', expandAllKits);
+}
+
+// Переопределяем обработчик клика по строке набора, чтобы сохранять состояние
+function attachKitToggleHandler() {
+    document.querySelectorAll('.kit-row').forEach(row => {
+        // Убираем старый обработчик, чтобы не дублировать
+        row.removeEventListener('click', kitRowClickHandler);
+        row.addEventListener('click', kitRowClickHandler);
+    });
+}
+
+function kitRowClickHandler(e) {
+    // Если клик по чекбоксу – не сворачиваем
+    if (e.target.classList.contains('kit-select-checkbox')) return;
+    const card = this.closest('.kit-card');
+    if (!card) return;
+    const kitId = card.dataset.kitId;
+    if (card.classList.contains('open')) {
+        card.classList.remove('open');
+        collapsedKitsState.add(kitId);
+    } else {
+        card.classList.add('open');
+        collapsedKitsState.delete(kitId);
+    }
+    saveKitsCollapseState();
+}
+
+// Модифицируем renderKits, чтобы после отрисовки применить состояние и добавить кнопки
+const originalRenderKits = window.renderKits;
+window.renderKits = function() {
+    if (originalRenderKits) originalRenderKits();
+    addCollapseExpandButtons();
+    loadKitsCollapseState();      // загружаем сохранённое состояние
+    applyCollapseStateToCards();  // применяем к карточкам
+    attachKitToggleHandler();     // вешаем обработчики с сохранением
+};
+
+// Инициализация при загрузке
+loadKitsCollapseState();
 </script>
 </body>
 </html>
