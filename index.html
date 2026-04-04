@@ -169,6 +169,7 @@
         <h3>➕ Добавить товар</h3>
         <div class="form-row">
             <div class="form-group"><label>Наименование</label><input type="text" id="productName" placeholder="Верхний шкаф 60см"></div>
+            <div class="form-group"><label>Артикул</label><input type="text" id="productArtikul" placeholder="402419 068"></div>
             <div class="form-group"><label>Категория</label><select id="categorySelect"></select></div>
             <div class="form-group"><label>Поставщик</label><select id="supplierSelect"></select></div>
             <div class="form-group"><label>Подкатегория</label><select id="subcategorySelect"></select></div>
@@ -777,8 +778,10 @@
         const noteHtml = kit.note
             ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:6px;">💬 ${escapeHtml(kit.note)}</div>` : '';
 
+        const isKitChecked = selectedKitIds.has(kit.id) ? 'checked' : '';
         return `<div class="kit-card ${cls}" data-kit-id="${kit.id}">
             <div class="kit-row">
+                <input type="checkbox" class="kit-select-checkbox" data-kit-id="${kit.id}" ${isKitChecked} style="margin-right:4px;width:16px;height:16px;cursor:pointer;flex-shrink:0;">
                 <span class="kit-toggle">▶</span>
                 <span class="kit-name">${escapeHtml(kit.name)}</span>
                 ${tagsHtml ? `<div class="kit-meta-inline">${tagsHtml}</div>` : ''}
@@ -883,11 +886,21 @@
 
         // Toggle individual card expand/collapse
         container.querySelectorAll('.kit-row').forEach(row => {
-            row.addEventListener('click', () => {
+            row.addEventListener('click', (e) => {
+                if (e.target.classList.contains('kit-select-checkbox')) return;
                 const card = row.closest('.kit-card');
                 card.classList.toggle('open');
             });
         });
+        container.querySelectorAll('.kit-select-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (cb.checked) selectedKitIds.add(cb.dataset.kitId);
+                else selectedKitIds.delete(cb.dataset.kitId);
+                updateKitSelectionUI();
+            });
+        });
+        ensureKitMassBar();
+        updateKitSelectionUI();
 
         container.querySelectorAll('.kit-del-btn').forEach(btn => {
             btn.addEventListener('click', e => {
@@ -1076,13 +1089,14 @@
     }
 
     // ------------------- CRUD -------------------
-    function addProduct(name, category, supplier, subcategory, stock, minStock) {
+    function addProduct(name, artikul, category, supplier, subcategory, stock, minStock) {
         if (!name || name.trim() === '') { alert('Введите наименование'); return false; }
         const stockNum = parseInt(stock,10) || 0;
         const minNum = parseInt(minStock,10) || 0;
         const newItem = {
             id: Date.now() + '-' + Math.random().toString(36).substr(2,6),
             name: name.trim(),
+            artikul: (artikul || '').trim(),
             category: category || 'Прочее',
             supplier: supplier || 'Другой',
             subcategory: subcategory || '',
@@ -1130,7 +1144,7 @@
         const tbody = document.getElementById('tableBody');
         let items = getFilteredItems();
         if (items.length === 0) {
-            tbody.innerHTML = '讷(eval)';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:24px;">Нет товаров</td></tr>';
             return;
         }
 
@@ -1638,14 +1652,16 @@
         });
 
         on('addBtn', 'click', () => {
-            const name = byId('productName').value;
-            const cat  = byId('categorySelect').value;
-            const sup  = byId('supplierSelect').value;
-            const sub  = byId('subcategorySelect').value;
+            const name     = byId('productName').value;
+            const artikul  = byId('productArtikul') ? byId('productArtikul').value : '';
+            const cat      = byId('categorySelect').value;
+            const sup      = byId('supplierSelect').value;
+            const sub      = byId('subcategorySelect').value;
             const stock    = byId('initialStock').value;
             const minStock = byId('minStock').value;
-            if (addProduct(name, cat, sup, sub, stock, minStock)) {
+            if (addProduct(name, artikul, cat, sup, sub, stock, minStock)) {
                 byId('productName').value = '';
+                if (byId('productArtikul')) byId('productArtikul').value = '';
                 byId('initialStock').value = '0';
             }
         });
@@ -1726,6 +1742,49 @@
             renderKits();
         });
     });
+    // ── Массовое выделение наборов ──────────────────────────
+    let selectedKitIds = new Set();
+
+    function updateKitSelectionUI() {
+        const countSpan = document.getElementById('selectedKitsCount');
+        if (countSpan) countSpan.innerText = selectedKitIds.size;
+        document.querySelectorAll('.kit-select-checkbox').forEach(cb => {
+            cb.checked = selectedKitIds.has(cb.dataset.kitId);
+        });
+    }
+
+    function ensureKitMassBar() {
+        if (document.getElementById('kitMassActionsBar')) return;
+        const kitsSection = document.getElementById('kitsContainer');
+        if (!kitsSection) return;
+        const bar = document.createElement('div');
+        bar.id = 'kitMassActionsBar';
+        bar.className = 'mass-actions';
+        bar.style.marginBottom = '12px';
+        bar.innerHTML = `
+            <span>Выбрано наборов: <strong id="selectedKitsCount">0</strong></span>
+            <button id="kitSelectAllBtn" class="btn-outline">Выбрать все</button>
+            <button id="kitClearSelectionBtn" class="btn-outline">Снять выделение</button>
+            <button id="kitDeleteSelectedBtn" style="background:#dc2626;">Удалить выбранные</button>
+        `;
+        kitsSection.parentNode.insertBefore(bar, kitsSection);
+        byId('kitSelectAllBtn').addEventListener('click', () => {
+            getFilteredKits().forEach(k => selectedKitIds.add(k.id));
+            updateKitSelectionUI();
+        });
+        byId('kitClearSelectionBtn').addEventListener('click', () => {
+            selectedKitIds.clear();
+            updateKitSelectionUI();
+        });
+        byId('kitDeleteSelectedBtn').addEventListener('click', () => {
+            if (!selectedKitIds.size) return;
+            if (confirm(`Удалить выбранные наборы (${selectedKitIds.size} шт.)?`)) {
+                kits = kits.filter(k => !selectedKitIds.has(k.id));
+                selectedKitIds.clear();
+                saveAll();
+            }
+        });
+    }
 </script>
 </body>
 </html>
