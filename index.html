@@ -188,6 +188,7 @@
     </details>
 
     <!-- НАБОРЫ -->
+    <div id="kitsSectionWrapper" style="margin-bottom:28px;">
     <div style="margin-bottom:28px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
             <div>
@@ -254,7 +255,7 @@
             Наборов ещё нет. Нажмите «Создать набор», чтобы добавить первый.
         </div>
     </div>
-
+</div>
     <!-- Синхронизация JSONBin -->
     <div id="syncPanel" style="margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1628,19 +1629,22 @@ function importCSV(file) {
         const kitsTxtInput = byId('importKitsTxtInput');
         if (kitsTxtInput) kitsTxtInput.addEventListener('change', e => { if (e.target.files[0]) importKitsTxt(e.target.files[0]); kitsTxtInput.value = ''; });
     });
-// ========== СВОРАЧИВАНИЕ ВСЕГО БЛОКА НАБОРОВ ========== 
+// ========== СВОРАЧИВАНИЕ ВСЕГО БЛОКА НАБОРОВ (исправленная версия) ==========
 (function() {
-    const KITS_SECTION_STORAGE_KEY = 'kitsSectionCollapsed';
+    const wrapper = document.getElementById('kitsSectionWrapper');
+    if (!wrapper) {
+        console.warn('Не найден контейнер #kitsSectionWrapper');
+        return;
+    }
     
-    // Находим контейнер, который содержит весь раздел наборов
-    const kitsSection = document.querySelector('#kitsContainer')?.closest('div[style*="margin-bottom:28px"]');
-    if (!kitsSection) return;
+    // Находим заголовок внутри wrapper
+    const headerDiv = wrapper.querySelector('div[style*="display:flex"]');
+    if (!headerDiv) {
+        console.warn('Не найден заголовок внутри wrapper');
+        return;
+    }
     
-    // Добавляем кнопку сворачивания рядом с заголовком
-    const headerDiv = kitsSection.querySelector('div[style*="display:flex; align-items:center; justify-content:space-between"]');
-    if (!headerDiv) return;
-    
-    // Проверяем, не добавлена ли уже кнопка
+    // Добавляем кнопку, если её ещё нет
     if (document.getElementById('toggleKitsSectionBtn')) return;
     
     const toggleBtn = document.createElement('button');
@@ -1649,17 +1653,15 @@ function importCSV(file) {
     toggleBtn.style.fontSize = '0.75rem';
     toggleBtn.style.padding = '4px 12px';
     toggleBtn.textContent = 'Свернуть наборы';
-    
     headerDiv.appendChild(toggleBtn);
     
-    // Контент, который будем скрывать: всё, что после заголовка и до следующего элемента (синхронизация)
+    // Элементы, которые будем скрывать: всё, что идёт после заголовка внутри wrapper
     let contentToToggle = [];
-    let next = headerDiv.parentElement?.nextElementSibling;
-    while (next && next.id !== 'syncPanel') {
+    let next = headerDiv.nextElementSibling;
+    while (next) {
         contentToToggle.push(next);
         next = next.nextElementSibling;
     }
-    // Также включаем сам блок с синхронизацией? Нет, синхронизацию не трогаем.
     
     function setKitsSectionCollapsed(collapsed) {
         if (collapsed) {
@@ -1669,11 +1671,10 @@ function importCSV(file) {
             contentToToggle.forEach(el => el.style.display = '');
             toggleBtn.textContent = 'Свернуть наборы';
         }
-        localStorage.setItem(KITS_SECTION_STORAGE_KEY, collapsed ? '1' : '0');
+        localStorage.setItem('kitsSectionCollapsed', collapsed ? '1' : '0');
     }
     
-    // Загружаем сохранённое состояние
-    const saved = localStorage.getItem(KITS_SECTION_STORAGE_KEY);
+    const saved = localStorage.getItem('kitsSectionCollapsed');
     if (saved === '1') {
         setKitsSectionCollapsed(true);
     } else {
