@@ -518,101 +518,106 @@
     }
 
     // ------------------- ИМПОРТ EXCEL (ПОЛНАЯ ВЕРСИЯ) -------------------
-    function importExcel(file) {
-        if (typeof XLSX === 'undefined') { alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.'); return; }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
-                if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
+function importExcel(file) {
+    if (typeof XLSX === 'undefined') { alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+            if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
 
-                let headerRowIndex=-1, nameCol=-1, stockCol=-1, artikulCol=-1;
-                for (let i=0; i<Math.min(rows.length,100); i++) {
-                    const row=rows[i]; if (!row) continue;
-                    let tn=-1, ts=-1, ta=-1;
-                    for (let j=0; j<row.length; j++) {
-                        const cell=String(row[j]||'').toLowerCase().trim();
-                        if (cell.includes('номенклат')||cell.includes('наименован')||cell==='товар') tn=j;
-                        if (cell==='в наличии'||cell.includes('наличи')||cell.includes('конечный остаток')||cell==='остаток'||cell.includes('остат')||cell==='количество'||cell.includes('кол-во')||cell.includes('кол.')) ts=j;
-                        if (cell==='артикул'||cell.includes('артикул')||cell==='код'||cell==='арт.') ta=j;
-                    }
-                    if (tn!==-1&&ts!==-1) {
-                        nameCol=tn; stockCol=ts;
-                        if (ta!==-1) artikulCol=ta;
-                        else if (tn>0) artikulCol=tn-1;
-                        headerRowIndex=i; break;
-                    }
+            // Автопоиск колонок: название, остаток, артикул
+            let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
+            for (let i = 0; i < Math.min(rows.length, 100); i++) {
+                const row = rows[i];
+                if (!row) continue;
+                let tn = -1, ts = -1, ta = -1;
+                for (let j = 0; j < row.length; j++) {
+                    const cell = String(row[j] || '').toLowerCase().trim();
+                    if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
+                    if (cell === 'в наличии' || cell.includes('наличи') || cell.includes('конечный остаток') || cell === 'остаток' || cell.includes('остат') || cell === 'количество' || cell.includes('кол-во') || cell.includes('кол.')) ts = j;
+                    if (cell === 'артикул' || cell.includes('артикул') || cell === 'код' || cell === 'арт.') ta = j;
                 }
-                if (headerRowIndex===-1||nameCol===-1||stockCol===-1) {
-                    let preview='';
-                    for (let i=0; i<Math.min(rows.length,10); i++) { if (rows[i]&&rows[i].length) preview+=`Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`; }
-                    if (!confirm('Колонки не найдены автоматически.\n\n'+preview+'\nУказать вручную?')) { alert('Импорт отменён.'); return; }
-                    nameCol=parseInt(prompt('Колонка с названием (1=первая):','5'),10)-1;
-                    stockCol=parseInt(prompt('Колонка с остатком (1=первая):','7'),10)-1;
-                    artikulCol=parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):','4'),10)-1;
-                    headerRowIndex=parseInt(prompt('Строка заголовка:','1'),10)-1;
-                    if (isNaN(nameCol)||isNaN(stockCol)||isNaN(headerRowIndex)) { alert('Некорректный ввод. Отменено.'); return; }
-                    if (artikulCol<0) artikulCol=-1;
+                if (tn !== -1 && ts !== -1) {
+                    nameCol = tn; stockCol = ts;
+                    if (ta !== -1) artikulCol = ta;
+                    else if (tn > 0) artikulCol = tn - 1;
+                    headerRowIndex = i;
+                    break;
                 }
+            }
+            if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
+                let preview = '';
+                for (let i = 0; i < Math.min(rows.length, 10); i++) {
+                    if (rows[i] && rows[i].length) preview += `Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`;
+                }
+                if (!confirm('Колонки не найдены автоматически.\n\n' + preview + '\nУказать вручную?')) { alert('Импорт отменён.'); return; }
+                nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'), 10) - 1;
+                stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'), 10) - 1;
+                artikulCol = parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):', '4'), 10) - 1;
+                headerRowIndex = parseInt(prompt('Строка заголовка:', '1'), 10) - 1;
+                if (isNaN(nameCol) || isNaN(stockCol) || isNaN(headerRowIndex)) { alert('Некорректный ввод. Отменено.'); return; }
+                if (artikulCol < 0) artikulCol = -1;
+            }
 
-                const SVC=['итого','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад','всего'];
-                const isSvc=n=>{ const l=n.toLowerCase(); return SVC.some(w=>l.includes(w)); };
+            const SVC = ['итого', 'склад', 'параметры', 'отбор', 'показать', 'дефицит', 'излишек', 'резерв', 'обеспечени', 'основной склад', 'всего'];
+            const isSvc = n => { const l = n.toLowerCase(); return SVC.some(w => l.includes(w)); };
 
-                const newItems=[]; let upd=0, skip=0;
-                for (let i=headerRowIndex+1; i<rows.length; i++) {
-                    const row=rows[i]; if (!row||row.length===0) continue;
-                    let name=row[nameCol]!==undefined?String(row[nameCol]).trim():'';
-                    if (!name||!name.replace(/\s/g,'')) { skip++; continue; }
-                    if (isSvc(name)) { skip++; continue; }
-                    if (/^[\d\s\-]+$/.test(name)) { skip++; continue; }
+            const newItems = [];
+            let upd = 0, skip = 0;
+            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
+                let name = row[nameCol] !== undefined ? String(row[nameCol]).trim() : '';
+                if (!name || !name.replace(/\s/g, '')) { skip++; continue; }
+                if (isSvc(name)) { skip++; continue; }
+                if (/^[\d\s\-]+$/.test(name)) { skip++; continue; }
 
-                    let artikul='';
-                    if (artikulCol>=0&&row[artikulCol]!==undefined&&row[artikulCol]!=='') {
-                        artikul=String(row[artikulCol]).trim();
-                    }
-
-                    let sr=row[stockCol];
-                    if (sr===undefined||sr===null||sr==='') { skip++; continue; }
-                    if (typeof sr==='string') sr=sr.replace(/\s/g,'').replace(',','.');
-                    const stock=parseFloat(sr);
-                    if (isNaN(stock)) { skip++; continue; }
-
-                    let ex = artikul ? inventory.find(it=>it.artikul&&it.artikul===artikul) : null;
-                    if (!ex) ex = inventory.find(it=>it.name===name);
-
-                    if (ex) {
-                        ex.stock=Math.round(stock);
-                        if (artikul) ex.artikul=artikul;
-                        upd++;
-                    } else {
-                        newItems.push({ name, artikul, stock:Math.round(stock), category:detectCategoryFromName(name), subcategory:detectSubcategoryFromName(name) });
-                    }
+                let artikul = '';
+                if (artikulCol >= 0 && row[artikulCol] !== undefined && row[artikulCol] !== '') {
+                    artikul = String(row[artikulCol]).trim();
                 }
 
-                if (newItems.length===0&&upd===0) { alert(`Товаров не найдено.\nПропущено: ${skip}`); return; }
-                let added=0;
-                if (newItems.length>0) {
-                    let supplier=prompt('Поставщик для новых товаров:','Из 1С');
-                    if (supplier===null) supplier='Из 1С';
-                    supplier=supplier.trim()||'Из 1С';
-                    if (!suppliers.includes(supplier)) suppliers.push(supplier);
-                    const defMin=parseInt(document.getElementById('defaultMinStock').value,10)||5;
-                    for (const p of newItems) {
-                        if (!categories.includes(p.category)) categories.push(p.category);
-                        if (p.subcategory&&!subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
-                        inventory.push({ id:Date.now()+'-'+Math.random().toString(36).substr(2,6), name:p.name, artikul:p.artikul||'', category:p.category, supplier, subcategory:p.subcategory, stock:p.stock, minStock:defMin });
-                        added++;
-                    }
+                let sr = row[stockCol];
+                if (sr === undefined || sr === null || sr === '') { skip++; continue; }
+                if (typeof sr === 'string') sr = sr.replace(/\s/g, '').replace(',', '.');
+                const stock = parseFloat(sr);
+                if (isNaN(stock)) { skip++; continue; }
+
+                let ex = artikul ? inventory.find(it => it.artikul && it.artikul === artikul) : null;
+                if (!ex) ex = inventory.find(it => it.name === name);
+                if (ex) {
+                    ex.stock = Math.round(stock);
+                    if (artikul) ex.artikul = artikul;
+                    upd++;
+                } else {
+                    newItems.push({ name, artikul, stock: Math.round(stock), category: detectCategoryFromName(name), subcategory: detectSubcategoryFromName(name) });
                 }
-                saveAll();
-                alert(`✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${upd}\nПропущено: ${skip}`);
-            } catch(err) { console.error(err); alert('Ошибка импорта: '+err.message); }
-        };
-        reader.readAsArrayBuffer(file);
-    }
+            }
+            if (newItems.length === 0 && upd === 0) { alert(`Товаров не найдено.\nПропущено: ${skip}`); return; }
+            let added = 0;
+            if (newItems.length > 0) {
+                let supplier = prompt('Поставщик для новых товаров:', 'Из 1С');
+                if (supplier === null) supplier = 'Из 1С';
+                supplier = supplier.trim() || 'Из 1С';
+                if (!suppliers.includes(supplier)) suppliers.push(supplier);
+                const defMin = parseInt(document.getElementById('defaultMinStock').value, 10) || 5;
+                for (const p of newItems) {
+                    if (!categories.includes(p.category)) categories.push(p.category);
+                    if (p.subcategory && !subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
+                    inventory.push({ id: Date.now() + '-' + Math.random().toString(36).substr(2, 6), name: p.name, artikul: p.artikul || '', category: p.category, supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin });
+                    added++;
+                }
+            }
+            saveAll();
+            alert(`✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${upd}\nПропущено: ${skip}`);
+        } catch (err) { console.error(err); alert('Ошибка импорта: ' + err.message); }
+    };
+    reader.readAsArrayBuffer(file);
+}
 
     // ------------------- НАБОРЫ -------------------
     let kitGroupBy = 'none';
@@ -1303,82 +1308,84 @@
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'ostatki_kuhni.csv'; link.click(); URL.revokeObjectURL(blob);
     }
 
-    function importCSV(file) {
-        function parseCSVLine(line) {
-            const cols = [];
-            let cur = '', inQ = false;
-            for (let i = 0; i < line.length; i++) {
-                const ch = line[i];
-                if (ch === '"') {
-                    if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-                    else inQ = !inQ;
-                } else if (ch === ',' && !inQ) {
-                    cols.push(cur); cur = '';
-                } else {
-                    cur += ch;
-                }
+function importCSV(file) {
+    function parseCSVLine(line) {
+        const cols = [];
+        let cur = '', inQ = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+                else inQ = !inQ;
+            } else if (ch === ',' && !inQ) {
+                cols.push(cur); cur = '';
+            } else {
+                cur += ch;
             }
-            cols.push(cur);
-            return cols.map(v => v.trim());
         }
-        function processText(text) {
-            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-            const lines = text.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) { alert('Файл пуст'); return; }
-            const headers = parseCSVLine(lines[0]);
-            const find = (kw) => headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
-            const nIdx = find('Наименован');
-            const cIdx = find('Категори');
-            const supIdx = find('Поставщик');
-            const subIdx = find('Подкатегори');
-            const sIdx = find('Остаток');
-            const mIdx = find('Минимальн');
-            if (nIdx === -1 || sIdx === -1) {
-                alert(`Не найдены колонки "Наименование" или "Остаток".\nЗаголовки: ${headers.join(', ')}`);
-                return;
-            }
-            let updated = 0, added = 0, skipped = 0;
-            for (let i = 1; i < lines.length; i++) {
-                const row = parseCSVLine(lines[i]);
-                const name = row[nIdx];
-                if (!name) { skipped++; continue; }
-                const parseNum = (v, def) => {
-                    if (v === undefined || v === '') return def;
-                    const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
-                    return isNaN(n) ? def : Math.round(n);
-                };
-                const stock = parseNum(row[sIdx], 0);
-                const minStock = parseNum(mIdx !== -1 ? row[mIdx] : '', 5);
-                const cat = (cIdx !== -1 && row[cIdx]) ? row[cIdx] : 'Прочее';
-                const sup = (supIdx !== -1 && row[supIdx]) ? row[supIdx] : 'Другой';
-                const sub = (subIdx !== -1 && row[subIdx]) ? row[subIdx] : '';
-                if (!categories.includes(cat)) categories.push(cat);
-                if (!suppliers.includes(sup)) suppliers.push(sup);
-                if (sub && !subcategories.includes(sub)) subcategories.push(sub);
-                const ex = inventory.find(it => it.name.toLowerCase() === name.toLowerCase());
-                if (ex) {
-                    ex.category = cat; ex.supplier = sup; ex.subcategory = sub;
-                    ex.stock = stock; ex.minStock = minStock;
-                    updated++;
-                } else {
-                    inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
-                    added++;
-                }
-            }
-            saveAll();
-            alert(`✅ CSV импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено: ${skipped}`);
-        }
-        const binReader = new FileReader();
-        binReader.onload = (be) => {
-            const bytes = new Uint8Array(be.target.result);
-            const hasUtf8Bom = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
-            const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
-            const txtReader = new FileReader();
-            txtReader.onload = (te) => processText(te.target.result);
-            txtReader.readAsText(file, enc);
-        };
-        binReader.readAsArrayBuffer(file);
+        cols.push(cur);
+        return cols.map(v => v.trim());
     }
+
+    function processText(text) {
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { alert('Файл пуст'); return; }
+        const headers = parseCSVLine(lines[0]);
+        const find = (kw) => headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
+        const nIdx = find('Наименован');
+        const cIdx = find('Категори');
+        const supIdx = find('Поставщик');
+        const subIdx = find('Подкатегори');
+        const sIdx = find('Остаток');
+        const mIdx = find('Минимальн');
+        if (nIdx === -1 || sIdx === -1) {
+            alert(`Не найдены колонки "Наименование" или "Остаток".\nЗаголовки: ${headers.join(', ')}`);
+            return;
+        }
+        let updated = 0, added = 0, skipped = 0;
+        for (let i = 1; i < lines.length; i++) {
+            const row = parseCSVLine(lines[i]);
+            const name = row[nIdx];
+            if (!name) { skipped++; continue; }
+            const parseNum = (v, def) => {
+                if (v === undefined || v === '') return def;
+                const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
+                return isNaN(n) ? def : Math.round(n);
+            };
+            const stock = parseNum(row[sIdx], 0);
+            const minStock = parseNum(mIdx !== -1 ? row[mIdx] : '', 5);
+            const cat = (cIdx !== -1 && row[cIdx]) ? row[cIdx] : 'Прочее';
+            const sup = (supIdx !== -1 && row[supIdx]) ? row[supIdx] : 'Другой';
+            const sub = (subIdx !== -1 && row[subIdx]) ? row[subIdx] : '';
+            if (!categories.includes(cat)) categories.push(cat);
+            if (!suppliers.includes(sup)) suppliers.push(sup);
+            if (sub && !subcategories.includes(sub)) subcategories.push(sub);
+            const ex = inventory.find(it => it.name.toLowerCase() === name.toLowerCase());
+            if (ex) {
+                ex.category = cat; ex.supplier = sup; ex.subcategory = sub;
+                ex.stock = stock; ex.minStock = minStock;
+                updated++;
+            } else {
+                inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
+                added++;
+            }
+        }
+        saveAll();
+        alert(`✅ CSV импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено: ${skipped}`);
+    }
+
+    const binReader = new FileReader();
+    binReader.onload = (be) => {
+        const bytes = new Uint8Array(be.target.result);
+        const hasUtf8Bom = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+        const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
+        const txtReader = new FileReader();
+        txtReader.onload = (te) => processText(te.target.result);
+        txtReader.readAsText(file, enc);
+    };
+    binReader.readAsArrayBuffer(file);
+}
 
     function importKitsTxt(file) {
         function processText(text) {
