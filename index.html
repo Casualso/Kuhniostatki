@@ -530,17 +530,30 @@ function importExcel(file) {
             const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
             if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
 
-            // Автопоиск колонок: название, остаток, артикул
             let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
+
+            // Поиск строки заголовка и колонок с приоритетом для "Конечный остаток"
             for (let i = 0; i < Math.min(rows.length, 100); i++) {
                 const row = rows[i];
                 if (!row) continue;
                 let tn = -1, ts = -1, ta = -1;
                 for (let j = 0; j < row.length; j++) {
                     const cell = String(row[j] || '').toLowerCase().trim();
+                    // Наименование
                     if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
-                    if (cell === 'в наличии' || cell.includes('наличи') || cell.includes('конечный остаток') || cell === 'остаток' || cell.includes('остат') || cell === 'количество' || cell.includes('кол-во') || cell.includes('кол.')) ts = j;
+                    // Артикул
                     if (cell === 'артикул' || cell.includes('артикул') || cell === 'код' || cell === 'арт.') ta = j;
+                    // Остаток: приоритет "конечный остаток", исключая "начальный" и "приход"
+                    if (cell === 'конечный остаток' || cell === 'конечный остаток' || 
+                        (cell.includes('остаток') && !cell.includes('начальный') && !cell.includes('приход'))) {
+                        ts = j;
+                    }
+                    // Если не нашли "конечный", но есть "в наличии" или "количество" (тоже исключая начальный/приход)
+                    if (ts === -1 && (cell === 'в наличии' || cell.includes('наличи') || 
+                        cell === 'количество' || cell.includes('кол-во') || cell.includes('кол.')) &&
+                        !cell.includes('начальный') && !cell.includes('приход')) {
+                        ts = j;
+                    }
                 }
                 if (tn !== -1 && ts !== -1) {
                     nameCol = tn; stockCol = ts;
@@ -550,6 +563,8 @@ function importExcel(file) {
                     break;
                 }
             }
+
+            // Если колонки не найдены – ручной ввод
             if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
                 let preview = '';
                 for (let i = 0; i < Math.min(rows.length, 10); i++) {
@@ -598,6 +613,7 @@ function importExcel(file) {
                     newItems.push({ name, artikul, stock: Math.round(stock), category: detectCategoryFromName(name), subcategory: detectSubcategoryFromName(name) });
                 }
             }
+
             if (newItems.length === 0 && upd === 0) { alert(`Товаров не найдено.\nПропущено: ${skip}`); return; }
             let added = 0;
             if (newItems.length > 0) {
@@ -614,7 +630,7 @@ function importExcel(file) {
                 }
             }
             saveAll();
-            alert(`✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${upd}\nПропущено: ${skip}`);
+            alert(`✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${upd}\nПропущено: ${skip}\n\n(Остатки взяты из колонки «Конечный остаток» или выбранной вручную)`);
         } catch (err) { console.error(err); alert('Ошибка импорта: ' + err.message); }
     };
     reader.readAsArrayBuffer(file);
