@@ -531,67 +531,45 @@ function importExcel(file) {
             const workbook = XLSX.read(data, { type: 'array' });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
-            if (!rows || rows.length < 2) {
-                alert('Файл пуст');
-                return;
-            }
+            if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
 
-            // ---- 1. Определяем строку заголовка и колонки ----
-            let headerRowIndex = -1;
-            let nameCol = -1;
-            let stockCol = -1;
-            let artikulCol = -1;
-
+            // --- Поиск заголовка: приоритет "Конечный остаток" ---
+            let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
             for (let i = 0; i < Math.min(rows.length, 50); i++) {
                 const row = rows[i];
                 if (!row) continue;
                 let tn = -1, ts = -1, ta = -1;
                 for (let j = 0; j < row.length; j++) {
                     const cell = String(row[j] || '').toLowerCase().trim();
-                    // Наименование
                     if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
-                    // Артикул
-                    if (cell === 'артикул' || cell.includes('артикул') || cell === 'код' || cell === 'арт.') ta = j;
-                    // Остаток: СНАЧАЛА ищем точное "конечный остаток"
-                    if (cell === 'конечный остаток' || cell === 'остаток конечный') {
-                        ts = j;
-                    }
+                    if (cell === 'артикул' || cell.includes('артикул') || cell === 'код') ta = j;
+                    if (cell === 'конечный остаток' || cell === 'остаток конечный') ts = j;
                 }
-                // Если нашли и имя, и остаток - берем эту строку как заголовок
                 if (tn !== -1 && ts !== -1) {
-                    nameCol = tn;
-                    stockCol = ts;
+                    nameCol = tn; stockCol = ts;
                     if (ta !== -1) artikulCol = ta;
-                    else if (tn > 0) artikulCol = tn - 1; // предполагаем артикул слева от названия
+                    else if (tn > 0) artikulCol = tn - 1;
                     headerRowIndex = i;
-                    console.log(`Заголовок найден в строке ${i+1}: колонка имени = ${nameCol+1}, остатка = ${stockCol+1}, артикула = ${artikulCol+1}`);
+                    console.log(`Заголовок в строке ${i+1}: имя ${nameCol+1}, остаток ${stockCol+1}, артикул ${artikulCol+1}`);
                     break;
                 }
             }
 
-            // Если не нашли - ручной ввод
             if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
                 let preview = '';
                 for (let i = 0; i < Math.min(rows.length, 10); i++) {
                     if (rows[i] && rows[i].length) preview += `Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`;
                 }
-                if (!confirm('Колонки не найдены автоматически.\n\n' + preview + '\nУказать вручную?')) {
-                    alert('Импорт отменён.');
-                    return;
-                }
-                nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'), 10) - 1;
-                stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'), 10) - 1;
-                artikulCol = parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):', '4'), 10) - 1;
-                headerRowIndex = parseInt(prompt('Строка заголовка:', '1'), 10) - 1;
-                if (isNaN(nameCol) || isNaN(stockCol) || isNaN(headerRowIndex)) {
-                    alert('Некорректный ввод. Отменено.');
-                    return;
-                }
-                if (artikulCol < 0) artikulCol = -1;
+                if (!confirm('Колонки не найдены. Указать вручную?')) { alert('Отмена'); return; }
+                nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'),10)-1;
+                stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'),10)-1;
+                artikulCol = parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):', '4'),10)-1;
+                headerRowIndex = parseInt(prompt('Строка заголовка:', '1'),10)-1;
+                if (isNaN(nameCol)||isNaN(stockCol)||isNaN(headerRowIndex)) { alert('Некорректно'); return; }
+                if (artikulCol<0) artikulCol=-1;
             }
 
-            // ---- 2. Обработка строк данных ----
-            const skipWords = ['итого', 'всего', 'склад', 'параметры', 'отбор', 'показать', 'дефицит', 'излишек', 'резерв', 'обеспечени', 'основной склад'];
+            const skipWords = ['итого','всего','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад'];
             const isSkipRow = (text) => {
                 const lower = text.toLowerCase();
                 return skipWords.some(w => lower.includes(w));
@@ -599,107 +577,105 @@ function importExcel(file) {
 
             let newItems = [];
             let updated = 0;
-            let skipped = 0;
             let processed = 0;
+            let skippedItems = []; // массив для отчёта
 
-            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+            for (let i = headerRowIndex+1; i < rows.length; i++) {
                 const row = rows[i];
-                if (!row || row.length === 0) continue;
+                if (!row || row.length===0) continue;
 
-                let name = row[nameCol] !== undefined ? String(row[nameCol]).trim() : '';
+                let name = row[nameCol]!==undefined ? String(row[nameCol]).trim() : '';
+                let artikul = (artikulCol>=0 && row[artikulCol]!==undefined) ? String(row[artikulCol]).trim() : '';
+
+                // --- Проверка причины пропуска ---
+                let skipReason = null;
                 if (!name) {
-                    skipped++;
-                    continue;
-                }
-                // Пропускаем явно служебные строки
-                if (isSkipRow(name)) {
-                    skipped++;
-                    continue;
-                }
-                // Если название состоит только из цифр и пробелов - скорее всего не товар
-                if (/^[\d\s\-]+$/.test(name)) {
-                    skipped++;
-                    continue;
-                }
-
-                let artikul = '';
-                if (artikulCol >= 0 && row[artikulCol] !== undefined && row[artikulCol] !== '') {
-                    artikul = String(row[artikulCol]).trim();
-                }
-
-                let stockValue = row[stockCol];
-                if (stockValue === undefined || stockValue === null || stockValue === '') {
-                    // Если остаток не указан, пропускаем (но можно задать 0)
-                    skipped++;
-                    continue;
-                }
-                if (typeof stockValue === 'string') {
-                    stockValue = stockValue.replace(/\s/g, '').replace(',', '.');
-                }
-                const stock = parseFloat(stockValue);
-                if (isNaN(stock)) {
-                    skipped++;
-                    continue;
-                }
-
-                processed++;
-                const finalStock = Math.round(stock);
-
-                // Ищем существующий товар по артикулу или точному совпадению имени
-                let existing = artikul ? inventory.find(it => it.artikul === artikul) : null;
-                if (!existing) existing = inventory.find(it => it.name === name);
-
-                if (existing) {
-                    existing.stock = finalStock;
-                    if (artikul) existing.artikul = artikul;
-                    updated++;
+                    skipReason = 'Пустое наименование';
+                } else if (isSkipRow(name)) {
+                    skipReason = `Служебное слово (${name})`;
+                } else if (/^[\d\s\-]+$/.test(name)) {
+                    skipReason = 'Название состоит только из цифр и пробелов';
                 } else {
-                    newItems.push({
-                        name: name,
-                        artikul: artikul,
-                        stock: finalStock,
-                        category: detectCategoryFromName(name),
-                        subcategory: detectSubcategoryFromName(name)
-                    });
+                    // проверяем остаток
+                    let stockRaw = row[stockCol];
+                    if (stockRaw === undefined || stockRaw === null || stockRaw === '') {
+                        skipReason = 'Пустое значение остатка';
+                    } else {
+                        if (typeof stockRaw === 'string') stockRaw = stockRaw.replace(/\s/g,'').replace(',','.');
+                        const stock = parseFloat(stockRaw);
+                        if (isNaN(stock)) {
+                            skipReason = `Остаток не число: "${stockRaw}"`;
+                        } else {
+                            // Всё хорошо - обрабатываем
+                            const finalStock = Math.round(stock);
+                            processed++;
+
+                            // Поиск существующего: сначала по точному имени
+                            let existing = inventory.find(it => it.name === name);
+                            if (!existing && artikul) {
+                                existing = inventory.find(it => it.artikul === artikul);
+                                if (existing && existing.name !== name) {
+                                    console.warn(`Артикул ${artikul} занят товаром "${existing.name}", для "${name}" создаём новый.`);
+                                    existing = null;
+                                }
+                            }
+                            if (existing) {
+                                existing.stock = finalStock;
+                                if (artikul && !existing.artikul) existing.artikul = artikul;
+                                updated++;
+                            } else {
+                                newItems.push({ name, artikul, stock: finalStock, category: detectCategoryFromName(name), subcategory: detectSubcategoryFromName(name) });
+                            }
+                            continue; // успешно обработано, не добавляем в пропущенные
+                        }
+                    }
                 }
+                // Если дошли сюда - позиция пропущена
+                skippedItems.push({
+                    rowIndex: i+1,
+                    name: name || '(пусто)',
+                    artikul: artikul || '(нет)',
+                    reason: skipReason || 'Неизвестная причина'
+                });
             }
 
-            console.log(`Импорт: обработано строк данных = ${processed}, пропущено = ${skipped}, обновлено = ${updated}, новых = ${newItems.length}`);
-
-            if (newItems.length === 0 && updated === 0) {
-                alert(`Товаров не найдено.\nПропущено строк: ${skipped}\nВозможно, неверно указаны колонки или формат файла.`);
-                return;
-            }
-
-            // ---- 3. Добавление новых товаров ----
+            // --- Добавление новых товаров ---
             let added = 0;
-            if (newItems.length > 0) {
-                let supplier = prompt('Поставщик для новых товаров:', 'Из 1С');
-                if (supplier === null) supplier = 'Из 1С';
-                supplier = supplier.trim() || 'Из 1С';
+            if (newItems.length) {
+                let supplier = prompt('Поставщик для новых товаров:', 'Из 1С') || 'Из 1С';
                 if (!suppliers.includes(supplier)) suppliers.push(supplier);
-                const defMin = parseInt(document.getElementById('defaultMinStock').value, 10) || 5;
-
+                const defMin = parseInt(document.getElementById('defaultMinStock').value,10) || 5;
                 for (const p of newItems) {
                     if (!categories.includes(p.category)) categories.push(p.category);
                     if (p.subcategory && !subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
                     inventory.push({
-                        id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-                        name: p.name,
-                        artikul: p.artikul || '',
-                        category: p.category,
-                        supplier: supplier,
-                        subcategory: p.subcategory,
-                        stock: p.stock,
-                        minStock: defMin
+                        id: Date.now()+'-'+Math.random().toString(36).substr(2,6),
+                        name: p.name, artikul: p.artikul || '', category: p.category,
+                        supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin
                     });
                     added++;
                 }
             }
-
             saveAll();
-            alert(`✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено (служебные строки): ${skipped}\n\nОстатки взяты из колонки «${stockCol+1}» (приоритет – конечный остаток).`);
-        } catch (err) {
+
+            // --- Формирование подробного отчёта о пропущенных ---
+            let report = `✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nОбработано строк с данными: ${processed}\n`;
+            if (skippedItems.length === 0) {
+                report += `\n📌 Пропущенных позиций нет.`;
+            } else {
+                report += `\n⚠️ ПРОПУЩЕНО ПОЗИЦИЙ: ${skippedItems.length}\n\n`;
+                const showCount = Math.min(30, skippedItems.length);
+                for (let idx = 0; idx < showCount; idx++) {
+                    const s = skippedItems[idx];
+                    report += `Строка ${s.rowIndex}: «${s.name}» (арт. ${s.artikul}) — ${s.reason}\n`;
+                }
+                if (skippedItems.length > 30) {
+                    report += `\n... и ещё ${skippedItems.length - 30} пропущенных. Полный список в консоли (F12).`;
+                }
+                console.table(skippedItems); // удобная таблица в консоли
+            }
+            alert(report);
+        } catch(err) {
             console.error(err);
             alert('Ошибка импорта: ' + err.message);
         }
