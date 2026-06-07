@@ -518,170 +518,192 @@
         return '';
     }
 
-    // ------------------- ИМПОРТ EXCEL (ПОЛНАЯ ВЕРСИЯ) -------------------
-function importExcel(file) {
-    if (typeof XLSX === 'undefined') {
-        alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.');
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
-            if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
+    // ------------------- ИМПОРТ EXCEL (ПОЛНАЯ ВЕРСИЯ + ОБНУЛЕНИЕ ОТСУТСТВУЮЩИХ) -------------------
+    function importExcel(file) {
+        if (typeof XLSX === 'undefined') {
+            alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+                if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
 
-            // --- Поиск заголовка: приоритет "Конечный остаток" ---
-            let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
-            for (let i = 0; i < Math.min(rows.length, 50); i++) {
-                const row = rows[i];
-                if (!row) continue;
-                let tn = -1, ts = -1, ta = -1;
-                for (let j = 0; j < row.length; j++) {
-                    const cell = String(row[j] || '').toLowerCase().trim();
-                    if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
-                    if (cell === 'артикул' || cell.includes('артикул') || cell === 'код') ta = j;
-                    if (cell === 'конечный остаток' || cell === 'остаток конечный') ts = j;
-                }
-                if (tn !== -1 && ts !== -1) {
-                    nameCol = tn; stockCol = ts;
-                    if (ta !== -1) artikulCol = ta;
-                    else if (tn > 0) artikulCol = tn - 1;
-                    headerRowIndex = i;
-                    console.log(`Заголовок в строке ${i+1}: имя ${nameCol+1}, остаток ${stockCol+1}, артикул ${artikulCol+1}`);
-                    break;
-                }
-            }
-
-            if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
-                let preview = '';
-                for (let i = 0; i < Math.min(rows.length, 10); i++) {
-                    if (rows[i] && rows[i].length) preview += `Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`;
-                }
-                if (!confirm('Колонки не найдены. Указать вручную?')) { alert('Отмена'); return; }
-                nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'),10)-1;
-                stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'),10)-1;
-                artikulCol = parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):', '4'),10)-1;
-                headerRowIndex = parseInt(prompt('Строка заголовка:', '1'),10)-1;
-                if (isNaN(nameCol)||isNaN(stockCol)||isNaN(headerRowIndex)) { alert('Некорректно'); return; }
-                if (artikulCol<0) artikulCol=-1;
-            }
-
-            const skipWords = ['итого','всего','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад'];
-            const isSkipRow = (text) => {
-                const lower = text.toLowerCase();
-                return skipWords.some(w => lower.includes(w));
-            };
-
-            let newItems = [];
-            let updated = 0;
-            let processed = 0;
-            let skippedItems = []; // массив для отчёта
-
-            for (let i = headerRowIndex+1; i < rows.length; i++) {
-                const row = rows[i];
-                if (!row || row.length===0) continue;
-
-                let name = row[nameCol]!==undefined ? String(row[nameCol]).trim() : '';
-                let artikul = (artikulCol>=0 && row[artikulCol]!==undefined) ? String(row[artikulCol]).trim() : '';
-
-                // --- Проверка причины пропуска ---
-                let skipReason = null;
-                if (!name) {
-                    skipReason = 'Пустое наименование';
-                } else if (isSkipRow(name)) {
-                    skipReason = `Служебное слово (${name})`;
-                } else if (/^[\d\s\-]+$/.test(name)) {
-                    skipReason = 'Название состоит только из цифр и пробелов';
-                } else {
-                    // проверяем остаток
-                    let stockRaw = row[stockCol];
-                    if (stockRaw === undefined || stockRaw === null || stockRaw === '') {
-                        skipReason = 'Пустое значение остатка';
-                    } else {
-                        if (typeof stockRaw === 'string') stockRaw = stockRaw.replace(/\s/g,'').replace(',','.');
-                        const stock = parseFloat(stockRaw);
-                        if (isNaN(stock)) {
-                            skipReason = `Остаток не число: "${stockRaw}"`;
-                        } else {
-                            // Всё хорошо - обрабатываем
-                            const finalStock = Math.round(stock);
-                            processed++;
-
-                            // Поиск существующего: сначала по точному имени
-                            let existing = inventory.find(it => it.name === name);
-                            if (!existing && artikul) {
-                                existing = inventory.find(it => it.artikul === artikul);
-                                if (existing && existing.name !== name) {
-                                    console.warn(`Артикул ${artikul} занят товаром "${existing.name}", для "${name}" создаём новый.`);
-                                    existing = null;
-                                }
-                            }
-                            if (existing) {
-                                existing.stock = finalStock;
-                                if (artikul && !existing.artikul) existing.artikul = artikul;
-                                updated++;
-                            } else {
-                                newItems.push({ name, artikul, stock: finalStock, category: detectCategoryFromName(name), subcategory: detectSubcategoryFromName(name) });
-                            }
-                            continue; // успешно обработано, не добавляем в пропущенные
-                        }
+                // --- Поиск заголовка: приоритет "Конечный остаток" ---
+                let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
+                for (let i = 0; i < Math.min(rows.length, 50); i++) {
+                    const row = rows[i];
+                    if (!row) continue;
+                    let tn = -1, ts = -1, ta = -1;
+                    for (let j = 0; j < row.length; j++) {
+                        const cell = String(row[j] || '').toLowerCase().trim();
+                        if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
+                        if (cell === 'артикул' || cell.includes('артикул') || cell === 'код') ta = j;
+                        if (cell === 'конечный остаток' || cell === 'остаток конечный') ts = j;
+                    }
+                    if (tn !== -1 && ts !== -1) {
+                        nameCol = tn; stockCol = ts;
+                        if (ta !== -1) artikulCol = ta;
+                        else if (tn > 0) artikulCol = tn - 1;
+                        headerRowIndex = i;
+                        break;
                     }
                 }
-                // Если дошли сюда - позиция пропущена
-                skippedItems.push({
-                    rowIndex: i+1,
-                    name: name || '(пусто)',
-                    artikul: artikul || '(нет)',
-                    reason: skipReason || 'Неизвестная причина'
-                });
-            }
 
-            // --- Добавление новых товаров ---
-            let added = 0;
-            if (newItems.length) {
-                let supplier = prompt('Поставщик для новых товаров:', 'Из 1С') || 'Из 1С';
-                if (!suppliers.includes(supplier)) suppliers.push(supplier);
-                const defMin = parseInt(document.getElementById('defaultMinStock').value,10) || 5;
-                for (const p of newItems) {
-                    if (!categories.includes(p.category)) categories.push(p.category);
-                    if (p.subcategory && !subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
-                    inventory.push({
-                        id: Date.now()+'-'+Math.random().toString(36).substr(2,6),
-                        name: p.name, artikul: p.artikul || '', category: p.category,
-                        supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin
+                if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
+                    let preview = '';
+                    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+                        if (rows[i] && rows[i].length) preview += `Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`;
+                    }
+                    if (!confirm('Колонки не найдены. Указать вручную?')) { alert('Отмена'); return; }
+                    nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'),10)-1;
+                    stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'),10)-1;
+                    artikulCol = parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):', '4'),10)-1;
+                    headerRowIndex = parseInt(prompt('Строка заголовка:', '1'),10)-1;
+                    if (isNaN(nameCol)||isNaN(stockCol)||isNaN(headerRowIndex)) { alert('Некорректно'); return; }
+                    if (artikulCol<0) artikulCol=-1;
+                }
+
+                const skipWords = ['итого','всего','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад'];
+                const isSkipRow = (text) => {
+                    const lower = text.toLowerCase();
+                    return skipWords.some(w => lower.includes(w));
+                };
+
+                let newItems = [];
+                let updated = 0;
+                let processed = 0;
+                let skippedItems = [];
+                const processedIds = new Set(); // id товаров, которые были в файле (обновлены) или будут добавлены
+
+                // Сначала собираем данные без изменения inventory
+                const rowsData = [];
+                for (let i = headerRowIndex+1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || row.length===0) continue;
+
+                    let name = row[nameCol]!==undefined ? String(row[nameCol]).trim() : '';
+                    let artikul = (artikulCol>=0 && row[artikulCol]!==undefined) ? String(row[artikulCol]).trim() : '';
+
+                    let skipReason = null;
+                    if (!name) {
+                        skipReason = 'Пустое наименование';
+                    } else if (isSkipRow(name)) {
+                        skipReason = `Служебное слово (${name})`;
+                    } else if (/^[\d\s\-]+$/.test(name)) {
+                        skipReason = 'Название состоит только из цифр и пробелов';
+                    } else {
+                        let stockRaw = row[stockCol];
+                        if (stockRaw === undefined || stockRaw === null || stockRaw === '') {
+                            skipReason = 'Пустое значение остатка';
+                        } else {
+                            if (typeof stockRaw === 'string') stockRaw = stockRaw.replace(/\s/g,'').replace(',','.');
+                            const stock = parseFloat(stockRaw);
+                            if (isNaN(stock)) {
+                                skipReason = `Остаток не число: "${stockRaw}"`;
+                            } else {
+                                const finalStock = Math.round(stock);
+                                processed++;
+
+                                // Поиск существующего товара
+                                let existing = inventory.find(it => it.name === name);
+                                if (!existing && artikul) {
+                                    existing = inventory.find(it => it.artikul === artikul);
+                                    if (existing && existing.name !== name) existing = null;
+                                }
+                                rowsData.push({ type: existing ? 'update' : 'new', existing, name, artikul, finalStock });
+                                continue;
+                            }
+                        }
+                    }
+                    skippedItems.push({
+                        rowIndex: i+1,
+                        name: name || '(пусто)',
+                        artikul: artikul || '(нет)',
+                        reason: skipReason || 'Неизвестная причина'
                     });
-                    added++;
                 }
-            }
-            saveAll();
 
-            // --- Формирование подробного отчёта о пропущенных ---
-            let report = `✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nОбработано строк с данными: ${processed}\n`;
-            if (skippedItems.length === 0) {
-                report += `\n📌 Пропущенных позиций нет.`;
-            } else {
-                report += `\n⚠️ ПРОПУЩЕНО ПОЗИЦИЙ: ${skippedItems.length}\n\n`;
-                const showCount = Math.min(30, skippedItems.length);
-                for (let idx = 0; idx < showCount; idx++) {
-                    const s = skippedItems[idx];
-                    report += `Строка ${s.rowIndex}: «${s.name}» (арт. ${s.artikul}) — ${s.reason}\n`;
+                // Запрашиваем у пользователя, нужно ли обнулять отсутствующие товары
+                const zeroMissing = confirm('Обнулить остатки для товаров, отсутствующих в файле?\n\nНажмите "ОК" – все товары, которые не найдены в выгрузке, получат остаток 0.\n"Отмена" – обновятся только найденные позиции, остальные останутся без изменений.');
+
+                // Применяем обновления и добавления
+                let added = 0;
+                for (const rd of rowsData) {
+                    if (rd.type === 'update') {
+                        rd.existing.stock = rd.finalStock;
+                        if (rd.artikul && !rd.existing.artikul) rd.existing.artikul = rd.artikul;
+                        processedIds.add(rd.existing.id);
+                        updated++;
+                    } else { // new
+                        let supplier = prompt('Поставщик для новых товаров:', 'Из 1С') || 'Из 1С';
+                        if (!suppliers.includes(supplier)) suppliers.push(supplier);
+                        const defMin = parseInt(document.getElementById('defaultMinStock').value,10) || 5;
+                        const category = detectCategoryFromName(rd.name);
+                        const subcategory = detectSubcategoryFromName(rd.name);
+                        if (!categories.includes(category)) categories.push(category);
+                        if (subcategory && !subcategories.includes(subcategory)) subcategories.push(subcategory);
+                        const newItem = {
+                            id: Date.now()+'-'+Math.random().toString(36).substr(2,6),
+                            name: rd.name,
+                            artikul: rd.artikul || '',
+                            category,
+                            supplier,
+                            subcategory,
+                            stock: rd.finalStock,
+                            minStock: defMin
+                        };
+                        inventory.push(newItem);
+                        processedIds.add(newItem.id);
+                        added++;
+                    }
                 }
-                if (skippedItems.length > 30) {
-                    report += `\n... и ещё ${skippedItems.length - 30} пропущенных. Полный список в консоли (F12).`;
+
+                // Обнуление отсутствующих
+                if (zeroMissing) {
+                    let zeroedCount = 0;
+                    for (const item of inventory) {
+                        if (!processedIds.has(item.id)) {
+                            if (item.stock !== 0) {
+                                item.stock = 0;
+                                zeroedCount++;
+                            }
+                        }
+                    }
+                    if (zeroedCount > 0) alert(`Обнулено товаров (не найдены в файле): ${zeroedCount}`);
                 }
-                console.table(skippedItems); // удобная таблица в консоли
+
+                saveAll();
+
+                // Формирование отчёта
+                let report = `✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nОбработано строк с данными: ${processed}\n`;
+                if (zeroMissing) report += `🔁 Выполнено обнуление отсутствующих товаров.\n`;
+                if (skippedItems.length === 0) {
+                    report += `\n📌 Пропущенных позиций нет.`;
+                } else {
+                    report += `\n⚠️ ПРОПУЩЕНО ПОЗИЦИЙ: ${skippedItems.length}\n\n`;
+                    const showCount = Math.min(30, skippedItems.length);
+                    for (let idx = 0; idx < showCount; idx++) {
+                        const s = skippedItems[idx];
+                        report += `Строка ${s.rowIndex}: «${s.name}» (арт. ${s.artikul}) — ${s.reason}\n`;
+                    }
+                    if (skippedItems.length > 30) {
+                        report += `\n... и ещё ${skippedItems.length - 30} пропущенных. Полный список в консоли (F12).`;
+                    }
+                    console.table(skippedItems);
+                }
+                alert(report);
+            } catch(err) {
+                console.error(err);
+                alert('Ошибка импорта: ' + err.message);
             }
-            alert(report);
-        } catch(err) {
-            console.error(err);
-            alert('Ошибка импорта: ' + err.message);
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
+        };
+        reader.readAsArrayBuffer(file);
+    }
 
     // ------------------- НАБОРЫ -------------------
     let kitGroupBy = 'none';
@@ -1193,8 +1215,8 @@ function importExcel(file) {
                             <strong>📁 ${escapeHtml(group.name)}</strong>
                             <span class="group-summary"> (${group.children.length})</span>
                             <span style="float:right;">${isCollapsed ? '▶' : '▼'}</span>
-                          </td>
-                        </tr>`;
+                           </td>
+                         </tr>`;
         if (!isCollapsed) {
             for (let child of group.children) {
                 if (child.type === 'item') {
@@ -1222,7 +1244,7 @@ function importExcel(file) {
                         <div class="stock-controls"><button class="stock-minus" data-id="${item.id}">-1</button><button class="stock-plus" data-id="${item.id}">+1</button></div></div></td>
                     <td><span class="min-badge editable-min" data-id="${item.id}" data-min="${item.minStock}">${item.minStock}</span></td>
                     <td><button class="delete-btn" data-id="${item.id}">🗑️</button></td>
-                </tr>`;
+                 </tr>`;
     }
 
     function attachEventHandlers() {
@@ -1372,84 +1394,84 @@ function importExcel(file) {
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'ostatki_kuhni.csv'; link.click(); URL.revokeObjectURL(blob);
     }
 
-function importCSV(file) {
-    function parseCSVLine(line) {
-        const cols = [];
-        let cur = '', inQ = false;
-        for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === '"') {
-                if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-                else inQ = !inQ;
-            } else if (ch === ',' && !inQ) {
-                cols.push(cur); cur = '';
-            } else {
-                cur += ch;
+    function importCSV(file) {
+        function parseCSVLine(line) {
+            const cols = [];
+            let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+                    else inQ = !inQ;
+                } else if (ch === ',' && !inQ) {
+                    cols.push(cur); cur = '';
+                } else {
+                    cur += ch;
+                }
             }
+            cols.push(cur);
+            return cols.map(v => v.trim());
         }
-        cols.push(cur);
-        return cols.map(v => v.trim());
-    }
 
-    function processText(text) {
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) { alert('Файл пуст'); return; }
-        const headers = parseCSVLine(lines[0]);
-        const find = (kw) => headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
-        const nIdx = find('Наименован');
-        const cIdx = find('Категори');
-        const supIdx = find('Поставщик');
-        const subIdx = find('Подкатегори');
-        const sIdx = find('Остаток');
-        const mIdx = find('Минимальн');
-        if (nIdx === -1 || sIdx === -1) {
-            alert(`Не найдены колонки "Наименование" или "Остаток".\nЗаголовки: ${headers.join(', ')}`);
-            return;
-        }
-        let updated = 0, added = 0, skipped = 0;
-        for (let i = 1; i < lines.length; i++) {
-            const row = parseCSVLine(lines[i]);
-            const name = row[nIdx];
-            if (!name) { skipped++; continue; }
-            const parseNum = (v, def) => {
-                if (v === undefined || v === '') return def;
-                const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
-                return isNaN(n) ? def : Math.round(n);
-            };
-            const stock = parseNum(row[sIdx], 0);
-            const minStock = parseNum(mIdx !== -1 ? row[mIdx] : '', 5);
-            const cat = (cIdx !== -1 && row[cIdx]) ? row[cIdx] : 'Прочее';
-            const sup = (supIdx !== -1 && row[supIdx]) ? row[supIdx] : 'Другой';
-            const sub = (subIdx !== -1 && row[subIdx]) ? row[subIdx] : '';
-            if (!categories.includes(cat)) categories.push(cat);
-            if (!suppliers.includes(sup)) suppliers.push(sup);
-            if (sub && !subcategories.includes(sub)) subcategories.push(sub);
-            const ex = inventory.find(it => it.name.toLowerCase() === name.toLowerCase());
-            if (ex) {
-                ex.category = cat; ex.supplier = sup; ex.subcategory = sub;
-                ex.stock = stock; ex.minStock = minStock;
-                updated++;
-            } else {
-                inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
-                added++;
+        function processText(text) {
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) { alert('Файл пуст'); return; }
+            const headers = parseCSVLine(lines[0]);
+            const find = (kw) => headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
+            const nIdx = find('Наименован');
+            const cIdx = find('Категори');
+            const supIdx = find('Поставщик');
+            const subIdx = find('Подкатегори');
+            const sIdx = find('Остаток');
+            const mIdx = find('Минимальн');
+            if (nIdx === -1 || sIdx === -1) {
+                alert(`Не найдены колонки "Наименование" или "Остаток".\nЗаголовки: ${headers.join(', ')}`);
+                return;
             }
+            let updated = 0, added = 0, skipped = 0;
+            for (let i = 1; i < lines.length; i++) {
+                const row = parseCSVLine(lines[i]);
+                const name = row[nIdx];
+                if (!name) { skipped++; continue; }
+                const parseNum = (v, def) => {
+                    if (v === undefined || v === '') return def;
+                    const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
+                    return isNaN(n) ? def : Math.round(n);
+                };
+                const stock = parseNum(row[sIdx], 0);
+                const minStock = parseNum(mIdx !== -1 ? row[mIdx] : '', 5);
+                const cat = (cIdx !== -1 && row[cIdx]) ? row[cIdx] : 'Прочее';
+                const sup = (supIdx !== -1 && row[supIdx]) ? row[supIdx] : 'Другой';
+                const sub = (subIdx !== -1 && row[subIdx]) ? row[subIdx] : '';
+                if (!categories.includes(cat)) categories.push(cat);
+                if (!suppliers.includes(sup)) suppliers.push(sup);
+                if (sub && !subcategories.includes(sub)) subcategories.push(sub);
+                const ex = inventory.find(it => it.name.toLowerCase() === name.toLowerCase());
+                if (ex) {
+                    ex.category = cat; ex.supplier = sup; ex.subcategory = sub;
+                    ex.stock = stock; ex.minStock = minStock;
+                    updated++;
+                } else {
+                    inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
+                    added++;
+                }
+            }
+            saveAll();
+            alert(`✅ CSV импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено: ${skipped}`);
         }
-        saveAll();
-        alert(`✅ CSV импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено: ${skipped}`);
-    }
 
-    const binReader = new FileReader();
-    binReader.onload = (be) => {
-        const bytes = new Uint8Array(be.target.result);
-        const hasUtf8Bom = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
-        const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
-        const txtReader = new FileReader();
-        txtReader.onload = (te) => processText(te.target.result);
-        txtReader.readAsText(file, enc);
-    };
-    binReader.readAsArrayBuffer(file);
-}
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            const hasUtf8Bom = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+            const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => processText(te.target.result);
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
+    }
 
     function importKitsTxt(file) {
         function processText(text) {
