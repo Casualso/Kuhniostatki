@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Учет остатков кухонь (QR для кладовщика)</title>
+    <title>Учет остатков кухонь (иерархия: поставщик → категория → подкатегория) + QR</title>
     <!-- SheetJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>if (typeof XLSX === 'undefined') { document.write('<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>'); }</script>
     <!-- QR Code Generator -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <style>
-        /* (все оригинальные стили остаются, добавляем только новые для QR-модалки) */
+        /* (все стили такие же, как в исходной полной версии, оставляем без изменений) */
         * { box-sizing: border-box; font-family: system-ui, 'Segoe UI', Roboto, sans-serif; }
         body { background: #f0f2f5; margin: 0; padding: 20px; }
-        .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 24px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); padding: 20px 24px 32px; }
+        .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 24px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); padding: 20px 24px 32px; position: relative; }
         h1 { font-size: 1.8rem; margin: 0 0 0.25rem; color: #1e293b; }
         .sub { color: #475569; margin-bottom: 24px; border-left: 4px solid #f97316; padding-left: 12px; }
         .section { background: #f8fafc; padding: 16px 20px; border-radius: 20px; margin-bottom: 28px; border: 1px solid #e2e8f0; }
@@ -141,7 +141,7 @@
         .bar-wrap { height:6px; background:#e2e8f0; border-radius:6px; margin-top:8px; overflow:hidden; }
         .bar-fill { height:100%; border-radius:6px; transition:width .4s; }
 
-        /* Стили для QR-модалки */
+        /* Стили для QR-модалки и карточки сканирования */
         .qr-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;
@@ -151,23 +151,17 @@
             background: white; border-radius: 32px; padding: 20px; max-width: 90vw; width: 320px;
             text-align: center; box-shadow: 0 20px 35px rgba(0,0,0,0.3);
         }
-        .qr-modal h3 { margin-top: 0; }
-        .qr-modal canvas { margin: 10px auto; display: block; border: 1px solid #e2e8f0; border-radius: 16px; padding: 8px; background: white; }
-        .qr-modal button { margin-top: 16px; }
-
-        /* Карточка товара для отображения по сканированию */
+        .qr-modal canvas { margin: 10px auto; display: block; border: 1px solid #e2e8f0; border-radius: 16px; background: white; }
         .scan-result-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: white; z-index: 1100; overflow-y: auto;
-            padding: 20px; display: flex; flex-direction: column;
+            padding: 20px; display: flex; flex-direction: column; align-items: center;
         }
         .scan-result-card {
             max-width: 500px; margin: 20px auto; background: #f8fafc; border-radius: 48px;
             padding: 24px; text-align: center; box-shadow: 0 8px 20px rgba(0,0,0,0.1);
         }
-        .scan-stock {
-            font-size: 4rem; font-weight: 800; margin: 20px 0;
-        }
+        .scan-stock { font-size: 4rem; font-weight: 800; margin: 20px 0; }
         .scan-low { color: #dc2626; background: #fee2e2; display: inline-block; padding: 8px 24px; border-radius: 60px; }
         .scan-ok { color: #16a34a; background: #dcfce7; display: inline-block; padding: 8px 24px; border-radius: 60px; }
         .close-scan { margin-top: 30px; }
@@ -176,7 +170,7 @@
 <body>
 <div class="container">
     <h1>🧑‍🍳 Учет остатков модульных кухонь</h1>
-    <div class="sub">Иерархия: Поставщик → Категория → Подкатегория (QR-коды для каждого товара)</div>
+    <div class="sub">Иерархия: Поставщик → Категория → Подкатегория (QR-код для каждого товара)</div>
 
     <!-- Форма добавления товара -->
     <div class="section">
@@ -220,7 +214,7 @@
         </div>
     </details>
 
-    <!-- НАБОРЫ (код не менялся, оставлен как в исходной полной версии) -->
+    <!-- НАБОРЫ -->
     <div id="kitsSectionWrapper" style="margin-bottom:28px;">
     <div style="margin-bottom:28px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
@@ -234,6 +228,7 @@
                 <input type="file" id="importKitsTxtInput" accept=".txt" style="display:none;">
             </div>
         </div>
+
         <details style="margin-bottom:12px;">
             <summary style="font-size:0.72rem;color:#94a3b8;cursor:pointer;">📄 Формат TXT файла для импорта наборов</summary>
             <div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;font-size:0.75rem;color:#475569;line-height:1.8;">
@@ -243,6 +238,7 @@
                 <code>Верхний шкаф 1дв. 600мм Белый альпийский; Верхние; 402419 068:1; 123456 001:1</code>
             </div>
         </details>
+
         <div class="kit-filter-bar">
             <label>Группировка:</label>
             <select id="kitGroupBy">
@@ -260,6 +256,7 @@
             <input type="text" id="kitSearch" placeholder="Название набора..." style="min-width:160px;">
             <button class="btn-outline" id="kitResetFilters" style="font-size:0.78rem; padding:5px 12px;">Сбросить</button>
         </div>
+
         <div class="kit-builder" id="kitBuilder" style="display:none;">
             <h3 id="kitBuilderTitle">Новый набор</h3>
             <div class="form-row" style="margin-bottom:12px;">
@@ -279,13 +276,14 @@
                 <button class="btn-outline" id="cancelKitBtn">Отмена</button>
             </div>
         </div>
+
         <div id="kitsContainer"></div>
         <div id="kitsEmpty" style="color:#94a3b8; font-size:0.85rem; display:none; padding:12px 0;">
             Наборов ещё нет. Нажмите «Создать набор», чтобы добавить первый.
         </div>
     </div>
 </div>
-    <!-- Синхронизация JSONBin (оставлена без изменений) -->
+    <!-- Синхронизация JSONBin -->
     <div id="syncPanel" style="margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div id="syncStatus" style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:#94a3b8;">
@@ -384,7 +382,7 @@
 </div>
 
 <script>
-    // ------------------- Оригинальное хранилище (без изменений) -------------------
+    // ------------------- Хранилище -------------------
     let inventory = [];
     let suppliers = ['Из 1С', 'ДСВ', 'Поставщик А'];
     let categories = ['Корпуса', 'Фасады', 'Фурнитура', 'Столешницы', 'Стеновые панели', 'Цоколи', 'Планки'];
@@ -397,20 +395,73 @@
     let editingKitId = null;
     let selectedKitIds = new Set();
 
-    // ---------- Облачная синхронизация (сокращённо, но рабочая) ----------
+    // ═══════════════════════════════════════════════════════
+    //  ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ — JSONBin.io (сокращённо, но рабочая)
+    // ═══════════════════════════════════════════════════════
     const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
     let syncBinId  = localStorage.getItem('syncBinId')  || '';
     let syncApiKey = localStorage.getItem('syncApiKey') || '';
     let syncInProgress = false;
+
     function syncEnabled() { return !!(syncBinId && syncApiKey); }
-    function setSyncStatus(state, text) { /* ... полная реализация, оставлена как в оригинале, но для краткости не дублируем, она будет скопирована из исходного кода */ }
-    async function pushToCloud() { /* ... */ }
-    async function pullFromCloud() { /* ... */ }
+
+    function setSyncStatus(state, text) {
+        const dot = document.getElementById('syncDot');
+        const txt = document.getElementById('syncText');
+        const btn = document.getElementById('syncNowBtn');
+        if (!dot || !txt) return;
+        const colors = { ok:'#22c55e', warn:'#f97316', error:'#ef4444', loading:'#3b82f6', off:'#cbd5e1' };
+        dot.style.background = colors[state] || colors.off;
+        txt.textContent = text;
+        if (btn) btn.style.display = syncEnabled() ? '' : 'none';
+    }
+
+    async function pushToCloud() {
+        if (!syncEnabled() || syncInProgress) return;
+        syncInProgress = true;
+        setSyncStatus('loading', 'Сохранение в облако…');
+        const payload = { inventory, suppliers, categories, subcategories, kits, groupBy };
+        try {
+            const res = await fetch(`${JSONBIN_BASE}/${syncBinId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'X-Master-Key': syncApiKey, 'X-Access-Key': syncApiKey },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            setSyncStatus('ok', 'Сохранено · ' + new Date().toLocaleTimeString());
+        } catch(e) { setSyncStatus('error', 'Ошибка: ' + e.message); }
+        finally { syncInProgress = false; }
+    }
+
+    async function pullFromCloud() {
+        if (!syncEnabled()) return false;
+        setSyncStatus('loading', 'Загрузка из облака…');
+        try {
+            const res = await fetch(`${JSONBIN_BASE}/${syncBinId}/latest`, {
+                headers: { 'X-Master-Key': syncApiKey, 'X-Access-Key': syncApiKey, 'X-Bin-Meta': 'false' }
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (Array.isArray(data.inventory)) inventory = data.inventory;
+            if (Array.isArray(data.suppliers)) suppliers = data.suppliers;
+            if (Array.isArray(data.categories)) categories = data.categories;
+            if (Array.isArray(data.subcategories)) subcategories = data.subcategories;
+            if (Array.isArray(data.kits)) kits = data.kits;
+            if (data.groupBy) groupBy = data.groupBy;
+            localStorage.setItem('inventory', JSON.stringify(inventory));
+            localStorage.setItem('suppliers', JSON.stringify(suppliers));
+            localStorage.setItem('categories', JSON.stringify(categories));
+            localStorage.setItem('subcategories', JSON.stringify(subcategories));
+            localStorage.setItem('kits', JSON.stringify(kits));
+            localStorage.setItem('groupBy', groupBy);
+            setSyncStatus('ok', 'Загружено из облака · ' + new Date().toLocaleTimeString());
+            return true;
+        } catch(e) { setSyncStatus('error', 'Ошибка загрузки: ' + e.message); return false; }
+    }
+
     let pushTimer = null;
     function schedulePush() { if (!syncEnabled()) return; clearTimeout(pushTimer); pushTimer = setTimeout(pushToCloud, 1500); }
 
-    // ------------------------------------------------------------------
-    // Загрузка данных (оригинал)
     async function loadData() {
         const storedInv = localStorage.getItem('inventory');
         if (storedInv) {
@@ -469,29 +520,567 @@
         schedulePush();
     }
 
-    function detectCategoryFromName(name) { /* оригинал */ return 'Прочее'; }
-    function detectSubcategoryFromName(name) { /* оригинал */ return ''; }
+    function detectCategoryFromName(name) {
+        const lower = name.toLowerCase();
+        if (lower.includes('дверь') || lower.includes('фасад')) return 'Фасады';
+        if (lower.includes('корпус')) return 'Корпуса';
+        if (lower.includes('столешниц')) return 'Столешницы';
+        if (lower.includes('планка')) return 'Планки';
+        if (lower.includes('цоколь')) return 'Цоколи';
+        if (lower.includes('фурнитур') || lower.includes('ручка') || lower.includes('петля') || lower.includes('амортизатор')) return 'Фурнитура';
+        if (lower.includes('стеновая') || lower.includes('панель')) return 'Стеновые панели';
+        return 'Прочее';
+    }
 
-    // ---------- ИМПОРТ EXCEL (оригинал) ----------
-    function importExcel(file) { /* полная версия из исходного кода, для краткости оставлен заглушка, но в финальном коде будет полная */ alert('Импорт Excel (функция сохранена)'); }
-    // ---------- НАБОРЫ (оригинальные функции) ----------
-    function calcKitQty(kit) { /* ... */ return 0; }
-    function getKitGroupKey(kit) { return ''; }
-    function buildKitCard(kit) { return ''; }
-    function getFilteredKits() { return []; }
-    function renderKits() { /* оригинал */ }
-    function openKitBuilder(kitId) {}
-    function addKitPartRow(itemId, qty) {}
-    function saveKit() {}
-    // Управление справочниками
-    function renderLists() {}
+    function detectSubcategoryFromName(name) {
+        const lower = name.toLowerCase();
+        if (lower.includes('перо')) return 'Перо';
+        if (lower.includes('ройс')) return 'Ройс';
+        if (lower.includes('вижн')) return 'Вижн';
+        if (lower.includes('баунти')) return 'Баунти';
+        if (lower.includes('фортуна')) return 'Фортуна';
+        if (lower.includes('нижн')) return 'Нижние';
+        if (lower.includes('верхн')) return 'Верхние';
+        if (lower.includes('пена') || lower.includes('колонк')) return 'Пеналы';
+        return '';
+    }
+
+    // ------------------- ИМПОРТ EXCEL (ПОЛНАЯ ВЕРСИЯ) -------------------
+function importExcel(file) {
+    if (typeof XLSX === 'undefined') {
+        alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+            if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
+
+            // --- Поиск заголовка: приоритет "Конечный остаток" ---
+            let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
+            for (let i = 0; i < Math.min(rows.length, 50); i++) {
+                const row = rows[i];
+                if (!row) continue;
+                let tn = -1, ts = -1, ta = -1;
+                for (let j = 0; j < row.length; j++) {
+                    const cell = String(row[j] || '').toLowerCase().trim();
+                    if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
+                    if (cell === 'артикул' || cell.includes('артикул') || cell === 'код') ta = j;
+                    if (cell === 'конечный остаток' || cell === 'остаток конечный') ts = j;
+                }
+                if (tn !== -1 && ts !== -1) {
+                    nameCol = tn; stockCol = ts;
+                    if (ta !== -1) artikulCol = ta;
+                    else if (tn > 0) artikulCol = tn - 1;
+                    headerRowIndex = i;
+                    console.log(`Заголовок в строке ${i+1}: имя ${nameCol+1}, остаток ${stockCol+1}, артикул ${artikulCol+1}`);
+                    break;
+                }
+            }
+
+            if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
+                let preview = '';
+                for (let i = 0; i < Math.min(rows.length, 10); i++) {
+                    if (rows[i] && rows[i].length) preview += `Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`;
+                }
+                if (!confirm('Колонки не найдены. Указать вручную?')) { alert('Отмена'); return; }
+                nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'),10)-1;
+                stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'),10)-1;
+                artikulCol = parseInt(prompt('Колонка с артикулом (1=первая, 0=нет):', '4'),10)-1;
+                headerRowIndex = parseInt(prompt('Строка заголовка:', '1'),10)-1;
+                if (isNaN(nameCol)||isNaN(stockCol)||isNaN(headerRowIndex)) { alert('Некорректно'); return; }
+                if (artikulCol<0) artikulCol=-1;
+            }
+
+            const skipWords = ['итого','всего','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад'];
+            const isSkipRow = (text) => {
+                const lower = text.toLowerCase();
+                return skipWords.some(w => lower.includes(w));
+            };
+
+            let newItems = [];
+            let updated = 0;
+            let processed = 0;
+            let skippedItems = []; // массив для отчёта
+
+            for (let i = headerRowIndex+1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length===0) continue;
+
+                let name = row[nameCol]!==undefined ? String(row[nameCol]).trim() : '';
+                let artikul = (artikulCol>=0 && row[artikulCol]!==undefined) ? String(row[artikulCol]).trim() : '';
+
+                // --- Проверка причины пропуска ---
+                let skipReason = null;
+                if (!name) {
+                    skipReason = 'Пустое наименование';
+                } else if (isSkipRow(name)) {
+                    skipReason = `Служебное слово (${name})`;
+                } else if (/^[\d\s\-]+$/.test(name)) {
+                    skipReason = 'Название состоит только из цифр и пробелов';
+                } else {
+                    // проверяем остаток
+                    let stockRaw = row[stockCol];
+                    if (stockRaw === undefined || stockRaw === null || stockRaw === '') {
+                        skipReason = 'Пустое значение остатка';
+                    } else {
+                        if (typeof stockRaw === 'string') stockRaw = stockRaw.replace(/\s/g,'').replace(',','.');
+                        const stock = parseFloat(stockRaw);
+                        if (isNaN(stock)) {
+                            skipReason = `Остаток не число: "${stockRaw}"`;
+                        } else {
+                            // Всё хорошо - обрабатываем
+                            const finalStock = Math.round(stock);
+                            processed++;
+
+                            // Поиск существующего: сначала по точному имени
+                            let existing = inventory.find(it => it.name === name);
+                            if (!existing && artikul) {
+                                existing = inventory.find(it => it.artikul === artikul);
+                                if (existing && existing.name !== name) {
+                                    console.warn(`Артикул ${artikul} занят товаром "${existing.name}", для "${name}" создаём новый.`);
+                                    existing = null;
+                                }
+                            }
+                            if (existing) {
+                                existing.stock = finalStock;
+                                if (artikul && !existing.artikul) existing.artikul = artikul;
+                                updated++;
+                            } else {
+                                newItems.push({ name, artikul, stock: finalStock, category: detectCategoryFromName(name), subcategory: detectSubcategoryFromName(name) });
+                            }
+                            continue; // успешно обработано, не добавляем в пропущенные
+                        }
+                    }
+                }
+                // Если дошли сюда - позиция пропущена
+                skippedItems.push({
+                    rowIndex: i+1,
+                    name: name || '(пусто)',
+                    artikul: artikul || '(нет)',
+                    reason: skipReason || 'Неизвестная причина'
+                });
+            }
+
+            // --- Добавление новых товаров ---
+            let added = 0;
+            if (newItems.length) {
+                let supplier = prompt('Поставщик для новых товаров:', 'Из 1С') || 'Из 1С';
+                if (!suppliers.includes(supplier)) suppliers.push(supplier);
+                const defMin = parseInt(document.getElementById('defaultMinStock').value,10) || 5;
+                for (const p of newItems) {
+                    if (!categories.includes(p.category)) categories.push(p.category);
+                    if (p.subcategory && !subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
+                    inventory.push({
+                        id: Date.now()+'-'+Math.random().toString(36).substr(2,6),
+                        name: p.name, artikul: p.artikul || '', category: p.category,
+                        supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin
+                    });
+                    added++;
+                }
+            }
+            saveAll();
+
+            // --- Формирование подробного отчёта о пропущенных ---
+            let report = `✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nОбработано строк с данными: ${processed}\n`;
+            if (skippedItems.length === 0) {
+                report += `\n📌 Пропущенных позиций нет.`;
+            } else {
+                report += `\n⚠️ ПРОПУЩЕНО ПОЗИЦИЙ: ${skippedItems.length}\n\n`;
+                const showCount = Math.min(30, skippedItems.length);
+                for (let idx = 0; idx < showCount; idx++) {
+                    const s = skippedItems[idx];
+                    report += `Строка ${s.rowIndex}: «${s.name}» (арт. ${s.artikul}) — ${s.reason}\n`;
+                }
+                if (skippedItems.length > 30) {
+                    report += `\n... и ещё ${skippedItems.length - 30} пропущенных. Полный список в консоли (F12).`;
+                }
+                console.table(skippedItems); // удобная таблица в консоли
+            }
+            alert(report);
+        } catch(err) {
+            console.error(err);
+            alert('Ошибка импорта: ' + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+    // ------------------- НАБОРЫ -------------------
+    let kitGroupBy = 'none';
+    let collapsedKitGroups = new Set();
+
+    function calcKitQty(kit) {
+        if (!kit.parts || kit.parts.length === 0) return 0;
+        let min = Infinity;
+        for (const p of kit.parts) {
+            const item = inventory.find(i => i.id === p.itemId);
+            const stock = item ? item.stock : 0;
+            const possible = p.qty > 0 ? Math.floor(stock / p.qty) : 0;
+            if (possible < min) min = possible;
+        }
+        return min === Infinity ? 0 : min;
+    }
+
+    function getKitGroupKey(kit) {
+        if (kitGroupBy === 'supplier') return kit.supplier || '(без поставщика)';
+        if (kitGroupBy === 'kitType')  return kit.kitType  || '(без типа)';
+        if (kitGroupBy === 'tag')      return (kit.tags && kit.tags.length) ? kit.tags[0] : '(без тегов)';
+        if (kitGroupBy === 'status') {
+            const q = calcKitQty(kit);
+            return q === 0 ? '🔴 Нет в наличии' : q <= 2 ? '🟠 Заканчивается' : '🟢 В наличии';
+        }
+        return 'all';
+    }
+
+    function buildKitCard(kit) {
+        const qty = calcKitQty(kit);
+        const cls = qty === 0 ? 'kit-none' : qty <= 2 ? 'kit-warn' : 'kit-ok';
+        const pCls = qty === 0 ? 'none' : qty <= 2 ? 'warn' : 'ok';
+        let minPossible = Infinity;
+        for (const p of kit.parts) {
+            const item = inventory.find(i => i.id === p.itemId);
+            const stock = item ? item.stock : 0;
+            const possible = p.qty > 0 ? Math.floor(stock / p.qty) : 0;
+            if (possible < minPossible) minPossible = possible;
+        }
+        const tagsHtml = [
+            kit.supplier ? `<span class="kit-tag supplier-tag">${escapeHtml(kit.supplier)}</span>` : '',
+            kit.kitType  ? `<span class="kit-tag type-tag">${escapeHtml(kit.kitType)}</span>` : '',
+            ...(kit.tags||[]).map(t => `<span class="kit-tag">${escapeHtml(t)}</span>`)
+        ].filter(Boolean).join('');
+        const partsHtml = kit.parts.map(p => {
+            const item = inventory.find(i => i.id === p.itemId);
+            const stock = item ? item.stock : 0;
+            const possible = p.qty > 0 ? Math.floor(stock / p.qty) : 0;
+            const sCls = possible === 0 ? 'none' : possible <= 2 ? 'warn' : 'ok';
+            const isBottleneck = possible === minPossible && qty <= 2;
+            const pct = Math.min(100, p.qty > 0 ? (stock / (p.qty * Math.max(qty, 1)) * 100) : 100);
+            const color = sCls === 'ok' ? '#22c55e' : sCls === 'warn' ? '#f97316' : '#ef4444';
+            return `<li class="kit-part" style="${isBottleneck && qty < 3 ? 'background:#fff7ed;' : ''}">
+                <span class="kit-part-name">${item ? escapeHtml(item.name) : '❌ удалён'}</span>
+                <span class="kit-part-needed">×${p.qty}</span>
+                <span class="kit-part-stock ${sCls}">${stock}</span>
+            </li>
+            <li style="list-style:none;padding:0 6px 2px;">
+                <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+            </li>`;
+        }).join('');
+        const noteHtml = kit.note ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:6px;">💬 ${escapeHtml(kit.note)}</div>` : '';
+        const isChecked = selectedKitIds.has(kit.id) ? 'checked' : '';
+        return `<div class="kit-card ${cls}" data-kit-id="${kit.id}">
+            <div class="kit-row">
+                <input type="checkbox" class="kit-select-checkbox" data-kit-id="${kit.id}" ${isChecked} style="margin-right:8px; width:18px; height:18px; cursor:pointer;">
+                <span class="kit-toggle">▶</span>
+                <span class="kit-name">${escapeHtml(kit.name)}</span>
+                ${tagsHtml ? `<div class="kit-meta-inline">${tagsHtml}</div>` : ''}
+                <span class="kit-pill ${pCls}">${qty} шт</span>
+            </div>
+            <div class="kit-body">
+                <ul class="kit-parts">${partsHtml}</ul>
+                ${noteHtml}
+                <div class="kit-foot">
+                    <button class="kit-edit-btn" data-kit-id="${kit.id}">✏️ Изменить</button>
+                    <button class="kit-del-btn" data-kit-id="${kit.id}" title="Удалить">🗑</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function getFilteredKits() {
+        const filterSup = document.getElementById('kitFilterSupplier');
+        const filterType = document.getElementById('kitFilterType');
+        const search = document.getElementById('kitSearch');
+        const supVal = filterSup ? filterSup.value : 'all';
+        const typeVal = filterType ? filterType.value : 'all';
+        const q = search ? search.value.toLowerCase().trim() : '';
+        return kits.filter(kit => {
+            if (supVal !== 'all' && (kit.supplier||'') !== supVal) return false;
+            if (typeVal !== 'all' && (kit.kitType||'') !== typeVal) return false;
+            if (q && !kit.name.toLowerCase().includes(q)) return false;
+            return true;
+        });
+    }
+
+    function renderKits() {
+        const container = document.getElementById('kitsContainer');
+        const empty = document.getElementById('kitsEmpty');
+        if (!container || !empty) return;
+
+        const kitSups = [...new Set(kits.map(k => k.supplier).filter(Boolean))];
+        const kitTypes = [...new Set(kits.map(k => k.kitType).filter(Boolean))];
+        const fSup = document.getElementById('kitFilterSupplier');
+        const fType = document.getElementById('kitFilterType');
+        if (fSup) { const p = fSup.value; fSup.innerHTML = '<option value="all">Все</option>' + kitSups.map(s => `<option ${s===p?'selected':''}>${escapeHtml(s)}</option>`).join(''); }
+        if (fType) { const p = fType.value; fType.innerHTML = '<option value="all">Все</option>' + kitTypes.map(t => `<option ${t===p?'selected':''}>${escapeHtml(t)}</option>`).join(''); }
+        const kitSupInput = document.getElementById('kitSupplierInput');
+        if (kitSupInput) { const p = kitSupInput.value; kitSupInput.innerHTML = '<option value="">— нет —</option>' + suppliers.map(s => `<option ${s===p?'selected':''}>${escapeHtml(s)}</option>`).join(''); }
+
+        const filtered = getFilteredKits();
+        if (filtered.length === 0) { container.innerHTML = ''; empty.style.display = ''; return; }
+        empty.style.display = 'none';
+
+        const renderList = items => `<div class="kits-list">${items.map(buildKitCard).join('')}</div>`;
+
+        if (kitGroupBy === 'none') {
+            container.innerHTML = renderList(filtered);
+        } else {
+            const groups = new Map();
+            for (const kit of filtered) {
+                const key = getKitGroupKey(kit);
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(kit);
+            }
+            let keys = [...groups.keys()];
+            if (kitGroupBy === 'status') {
+                const order = ['🔴 Нет в наличии','🟠 Заканчивается','🟢 В наличии'];
+                keys.sort((a,b) => order.indexOf(a) - order.indexOf(b));
+            } else { keys.sort(); }
+            container.innerHTML = keys.map(key => {
+                const groupKits = groups.get(key);
+                const isCollapsed = collapsedKitGroups.has(key);
+                const totalQty = groupKits.reduce((s,k) => s + calcKitQty(k), 0);
+                return `<div class="kit-group-section">
+                    <div class="kit-group-header" data-group-key="${escapeHtml(key)}">
+                        <span class="kit-group-toggle" style="${isCollapsed?'transform:rotate(-90deg)':''}">▾</span>
+                        <span>${escapeHtml(key)}</span>
+                        <span style="font-weight:400; color:#cbd5e1;">${groupKits.length} набор(ов) · ${totalQty} шт</span>
+                    </div>
+                    <div class="kit-group-body" style="${isCollapsed?'display:none':''}">
+                        ${renderList(groupKits)}
+                    </div>
+                </div>`;
+            }).join('');
+            container.querySelectorAll('.kit-group-header').forEach(h => {
+                h.addEventListener('click', () => {
+                    const key = h.dataset.groupKey;
+                    const body = h.nextElementSibling;
+                    const arrow = h.querySelector('.kit-group-toggle');
+                    if (collapsedKitGroups.has(key)) {
+                        collapsedKitGroups.delete(key);
+                        body.style.display = '';
+                        arrow.style.transform = '';
+                    } else {
+                        collapsedKitGroups.add(key);
+                        body.style.display = 'none';
+                        arrow.style.transform = 'rotate(-90deg)';
+                    }
+                });
+            });
+        }
+
+        container.querySelectorAll('.kit-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.classList.contains('kit-select-checkbox')) return;
+                const card = row.closest('.kit-card');
+                card.classList.toggle('open');
+            });
+        });
+        container.querySelectorAll('.kit-del-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                if (confirm('Удалить набор?')) { kits = kits.filter(k => k.id !== btn.dataset.kitId); saveAll(); }
+            });
+        });
+        container.querySelectorAll('.kit-edit-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                openKitBuilder(btn.dataset.kitId);
+            });
+        });
+
+        updateKitSelectionUI();
+        container.querySelectorAll('.kit-select-checkbox').forEach(cb => {
+            cb.removeEventListener('change', handleKitCheckboxChange);
+            cb.addEventListener('change', handleKitCheckboxChange);
+        });
+        container.querySelectorAll('.kit-row .kit-select-checkbox').forEach(cb => {
+            cb.addEventListener('click', (e) => e.stopPropagation());
+        });
+        ensureKitMassBar();
+    }
+
+    function openKitBuilder(kitId) {
+        editingKitId = kitId || null;
+        const kit = kitId ? kits.find(k=>k.id===kitId) : null;
+        document.getElementById('kitBuilderTitle').textContent = kit ? 'Редактировать набор' : 'Новый набор';
+        document.getElementById('kitNameInput').value = kit ? kit.name : '';
+        document.getElementById('kitTypeInput').value = kit ? (kit.kitType||'') : '';
+        document.getElementById('kitTagsInput').value = kit ? (kit.tags||[]).join(', ') : '';
+        document.getElementById('kitNoteInput').value = kit ? (kit.note||'') : '';
+        const supSel = document.getElementById('kitSupplierInput');
+        if (supSel) {
+            supSel.innerHTML = '<option value="">— нет —</option>' + suppliers.map(s=>`<option ${kit&&kit.supplier===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+        }
+        const container = document.getElementById('kitPartsContainer');
+        container.innerHTML = '';
+        const parts = kit ? kit.parts : [];
+        parts.forEach(p => addKitPartRow(p.itemId, p.qty));
+        if (parts.length === 0) addKitPartRow();
+        document.getElementById('kitBuilder').style.display = '';
+        document.getElementById('kitBuilder').scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function addKitPartRow(itemId, qty) {
+        const container = document.getElementById('kitPartsContainer');
+        const row = document.createElement('div');
+        row.className = 'kit-part-row';
+        const options = inventory.map(it => `<option value="${it.id}" ${it.id===itemId?'selected':''}>${escapeHtml(it.name)} (${it.stock} шт)</option>`).join('');
+        row.innerHTML = `<select class="kit-item-select">${options}</select><input type="number" class="kit-qty-input" value="${qty||1}" min="1" placeholder="кол-во"><button class="rm-part" title="Убрать">✖</button>`;
+        row.querySelector('.rm-part').addEventListener('click', () => row.remove());
+        container.appendChild(row);
+    }
+
+    function saveKit() {
+        const name = document.getElementById('kitNameInput').value.trim();
+        const supplier = document.getElementById('kitSupplierInput').value.trim();
+        const kitType = document.getElementById('kitTypeInput').value.trim();
+        const tagsRaw = document.getElementById('kitTagsInput').value;
+        const note = document.getElementById('kitNoteInput').value.trim();
+        const tags = tagsRaw.split(',').map(t=>t.trim()).filter(Boolean);
+        if (!name) { alert('Введите название набора'); return; }
+        const rows = document.querySelectorAll('#kitPartsContainer .kit-part-row');
+        const parts = [];
+        for (const row of rows) {
+            const itemId = row.querySelector('.kit-item-select').value;
+            const qty = parseInt(row.querySelector('.kit-qty-input').value, 10);
+            if (!itemId || isNaN(qty) || qty < 1) continue;
+            if (parts.find(p=>p.itemId===itemId)) continue;
+            parts.push({ itemId, qty });
+        }
+        if (parts.length === 0) { alert('Добавьте хотя бы одну позицию'); return; }
+        const kitData = { name, supplier, kitType, tags, note, parts };
+        if (editingKitId) {
+            const kit = kits.find(k=>k.id===editingKitId);
+            if (kit) Object.assign(kit, kitData);
+        } else {
+            kits.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), ...kitData });
+        }
+        editingKitId = null;
+        document.getElementById('kitBuilder').style.display = 'none';
+        saveAll();
+    }
+
+    // ------------------- Управление справочниками -------------------
+    function renderLists() {
+        const supplierContainer = document.getElementById('supplierList');
+        supplierContainer.innerHTML = suppliers.map(s => `<div class="badge">${escapeHtml(s)} <button class="remove-supplier" data-supplier="${escapeHtml(s)}">✖</button></div>`).join('');
+        document.querySelectorAll('.remove-supplier').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sup = btn.dataset.supplier;
+                if (confirm(`Удалить поставщика "${sup}"? Товары получат поставщика "Другой".`)) {
+                    suppliers = suppliers.filter(s => s !== sup);
+                    inventory.forEach(item => { if (item.supplier === sup) item.supplier = 'Другой'; });
+                    saveAll();
+                }
+            });
+        });
+        const categoryContainer = document.getElementById('categoryList');
+        categoryContainer.innerHTML = categories.map(c => `<div class="badge">${escapeHtml(c)} <button class="remove-category" data-category="${escapeHtml(c)}">✖</button></div>`).join('');
+        document.querySelectorAll('.remove-category').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cat = btn.dataset.category;
+                if (confirm(`Удалить категорию "${cat}"? Товары получат категорию "Прочее".`)) {
+                    categories = categories.filter(c => c !== cat);
+                    inventory.forEach(item => { if (item.category === cat) item.category = 'Прочее'; });
+                    saveAll();
+                }
+            });
+        });
+        const subcatContainer = document.getElementById('subcategoryList');
+        subcatContainer.innerHTML = subcategories.map(sc => `<div class="badge" data-sc="${escapeHtml(sc)}"><span class="sc-label">${escapeHtml(sc)}</span><button class="edit-btn rename-subcategory" data-subcategory="${escapeHtml(sc)}" title="Переименовать">✏️</button><button class="remove-subcategory" data-subcategory="${escapeHtml(sc)}" title="Удалить">✖</button></div>`).join('');
+        document.querySelectorAll('.remove-subcategory').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sc = btn.dataset.subcategory;
+                if (confirm(`Удалить подкатегорию "${sc}"? Товары получат пустую подкатегорию.`)) {
+                    subcategories = subcategories.filter(s => s !== sc);
+                    inventory.forEach(item => { if (item.subcategory === sc) item.subcategory = ''; });
+                    saveAll();
+                }
+            });
+        });
+        document.querySelectorAll('.rename-subcategory').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const oldName = btn.dataset.subcategory;
+                const badge = btn.closest('.badge');
+                if (badge.classList.contains('editing')) return;
+                badge.classList.add('editing');
+                const label = badge.querySelector('.sc-label');
+                const removeBtn = badge.querySelector('.remove-subcategory');
+                label.style.display='none'; btn.style.display='none'; removeBtn.style.display='none';
+                const input = document.createElement('input');
+                input.type='text'; input.value=oldName; input.className='badge-edit-input';
+                badge.insertBefore(input, label);
+                const saveBtn = document.createElement('button');
+                saveBtn.textContent='✔'; saveBtn.style.cssText='background:none;border:none;color:#22c55e;font-size:1rem;padding:0 2px;cursor:pointer;';
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent='✖'; cancelBtn.style.cssText='background:none;border:none;color:#ef4444;font-size:1rem;padding:0 2px;cursor:pointer;';
+                badge.appendChild(saveBtn); badge.appendChild(cancelBtn);
+                input.focus(); input.select();
+                function doSave() {
+                    const newName = input.value.trim();
+                    if (!newName || newName===oldName) { doCancel(); return; }
+                    if (subcategories.includes(newName)) { alert(`Подкатегория «${newName}» уже существует`); input.focus(); return; }
+                    const idx = subcategories.indexOf(oldName);
+                    if (idx!==-1) subcategories[idx]=newName;
+                    inventory.forEach(item => { if (item.subcategory===oldName) item.subcategory=newName; });
+                    saveAll();
+                }
+                function doCancel() {
+                    badge.classList.remove('editing');
+                    input.remove(); saveBtn.remove(); cancelBtn.remove();
+                    label.style.display=''; btn.style.display=''; removeBtn.style.display='';
+                }
+                saveBtn.addEventListener('click', doSave);
+                cancelBtn.addEventListener('click', doCancel);
+                input.addEventListener('keydown', e => { if(e.key==='Enter') doSave(); if(e.key==='Escape') doCancel(); });
+            });
+        });
+    }
+
     function addSupplier(name) { if (name.trim() && !suppliers.includes(name.trim())) { suppliers.push(name.trim()); saveAll(); } }
     function addCategory(name) { if (name.trim() && !categories.includes(name.trim())) { categories.push(name.trim()); saveAll(); } }
     function addSubcategory(name) { if (name.trim() && !subcategories.includes(name.trim())) { subcategories.push(name.trim()); saveAll(); } }
-    function setDefaultMinForAll() { /* оригинал */ }
-    function setMinForAll() { /* оригинал */ }
-    // CRUD
-    function addProduct(name, artikul, category, supplier, subcategory, stock, minStock) { /* оригинал */ return true; }
+
+    function setDefaultMinForAll() {
+        const defaultMin = parseInt(document.getElementById('defaultMinStock').value,10);
+        if (isNaN(defaultMin)) return;
+        inventory.forEach(item => { if (!item.minStock) item.minStock = defaultMin; });
+        saveAll();
+        alert('Для всех товаров, у которых не был задан мин. остаток, установлен новый порог');
+    }
+    function setMinForAll() {
+        const newMin = prompt('Введите новый минимальный остаток для ВСЕХ товаров:', '5');
+        if (newMin !== null) {
+            const val = parseInt(newMin,10);
+            if (!isNaN(val)) { inventory.forEach(item => item.minStock = val); saveAll(); alert('Мин. остаток обновлён для всех товаров'); }
+        }
+    }
+
+    // ------------------- CRUD -------------------
+    function addProduct(name, artikul, category, supplier, subcategory, stock, minStock) {
+        if (!name || name.trim() === '') { alert('Введите наименование'); return false; }
+        const stockNum = parseInt(stock,10) || 0;
+        const minNum = parseInt(minStock,10) || 0;
+        const newItem = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2,6),
+            name: name.trim(),
+            artikul: (artikul || '').trim(),
+            category: category || 'Прочее',
+            supplier: supplier || 'Другой',
+            subcategory: subcategory || '',
+            stock: Math.max(0, stockNum),
+            minStock: Math.max(0, minNum)
+        };
+        inventory.push(newItem);
+        saveAll();
+        return true;
+    }
+
     function updateStock(id, newStock) { const item = inventory.find(i => i.id === id); if (item) { item.stock = Math.max(0, parseInt(newStock,10) || 0); saveAll(); } }
     function updateMinStock(id, newMin) { const item = inventory.find(i => i.id === id); if (item) { item.minStock = Math.max(0, parseInt(newMin,10) || 0); saveAll(); } }
     function updateCategory(id, newCat) { const item = inventory.find(i => i.id === id); if (item && newCat) { item.category = newCat; saveAll(); } }
@@ -499,15 +1088,17 @@
     function updateSubcategory(id, newSub) { const item = inventory.find(i => i.id === id); if (item) { item.subcategory = newSub || ''; saveAll(); } }
     function adjustStock(id, delta) { const item = inventory.find(i => i.id === id); if (item) { item.stock = Math.max(0, item.stock + delta); saveAll(); } }
     function deleteProduct(id) { if (confirm('Удалить товар?')) { inventory = inventory.filter(i => i.id !== id); selectedItems.delete(id); saveAll(); } }
-    // Массовые действия
+
+    // ------------------- Массовые операции с товарами -------------------
     function updateMassActionsVisibility() { const count = selectedItems.size; const massDiv = document.getElementById('massActions'); massDiv.style.display = count > 0 ? 'flex' : 'none'; document.getElementById('selectedCount').innerText = count; }
-    function applyMassSupplier() { /* ... */ }
-    function applyMassCategory() { /* ... */ }
-    function applyMassSubcategory() { /* ... */ }
-    function applyMassMinStock() { /* ... */ }
-    function deleteSelected() { /* ... */ }
+    function applyMassSupplier() { const val = document.getElementById('massSupplierSelect').value; if (!val) return; for (let id of selectedItems) { const item = inventory.find(i => i.id === id); if (item) item.supplier = val; } saveAll(); alert(`Поставщик изменён для ${selectedItems.size} товаров`); }
+    function applyMassCategory() { const val = document.getElementById('massCategorySelect').value; if (!val) return; for (let id of selectedItems) { const item = inventory.find(i => i.id === id); if (item) item.category = val; } saveAll(); alert(`Категория изменена для ${selectedItems.size} товаров`); }
+    function applyMassSubcategory() { const val = document.getElementById('massSubcategorySelect').value; if (!val) return; for (let id of selectedItems) { const item = inventory.find(i => i.id === id); if (item) item.subcategory = val; } saveAll(); alert(`Подкатегория изменена для ${selectedItems.size} товаров`); }
+    function applyMassMinStock() { const newMin = parseInt(document.getElementById('massMinStock').value,10); if (isNaN(newMin)) return; for (let id of selectedItems) { const item = inventory.find(i => i.id === id); if (item) item.minStock = newMin; } saveAll(); alert(`Мин. остаток установлен для ${selectedItems.size} товаров`); }
+    function deleteSelected() { if (confirm(`Удалить выбранные ${selectedItems.size} товаров?`)) { inventory = inventory.filter(i => !selectedItems.has(i.id)); selectedItems.clear(); saveAll(); } }
     function clearSelection() { selectedItems.clear(); renderTable(); updateMassActionsVisibility(); }
-    // Фильтрация и рендер таблицы (модифицированный для добавления колонки QR)
+
+    // ------------------- Фильтрация и рендер таблицы товаров (ПОЛНАЯ ВЕРСИЯ) -------------------
     function getFilteredItems() {
         const cat = document.getElementById('filterCategory').value;
         const sup = document.getElementById('filterSupplier').value;
@@ -520,6 +1111,492 @@
             if (search && !item.name.toLowerCase().includes(search) && !(item.artikul||'').toLowerCase().includes(search)) return false;
             return true;
         });
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        let items = getFilteredItems();
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:24px;">Нет товаров</td></tr>';
+            return;
+        }
+        groupBy = document.getElementById('groupBySelect').value;
+        if (groupBy === 'none') {
+            tbody.innerHTML = items.map(item => renderItemRow(item, true)).join('');
+        } else {
+            const groups = buildGroupTree(items);
+            let html = '';
+            for (let group of groups) {
+                html += renderGroup(group, 0);
+            }
+            tbody.innerHTML = html;
+        }
+        attachEventHandlers();
+        updateSelectAllState();
+        updateMassActionsVisibility();
+        // Добавляем обработчики для кнопок QR
+        document.querySelectorAll('.qr-code-btn').forEach(btn => {
+            btn.removeEventListener('click', handleQRClick);
+            btn.addEventListener('click', handleQRClick);
+        });
+    }
+
+    function buildGroupTree(items) {
+        if (groupBy === 'supplier') {
+            const map = new Map();
+            for (let item of items) {
+                const key = item.supplier;
+                if (!map.has(key)) map.set(key, []);
+                map.get(key).push(item);
+            }
+            return Array.from(map.entries()).map(([name, children]) => ({ name, type: 'supplier', children: children.map(i => ({ type: 'item', data: i })) }));
+        } else if (groupBy === 'category') {
+            const map = new Map();
+            for (let item of items) {
+                const key = item.category;
+                if (!map.has(key)) map.set(key, []);
+                map.get(key).push(item);
+            }
+            return Array.from(map.entries()).map(([name, children]) => ({ name, type: 'category', children: children.map(i => ({ type: 'item', data: i })) }));
+        } else if (groupBy === 'subcategory') {
+            const map = new Map();
+            for (let item of items) {
+                const key = item.subcategory || '(без подкатегории)';
+                if (!map.has(key)) map.set(key, []);
+                map.get(key).push(item);
+            }
+            return Array.from(map.entries()).map(([name, children]) => ({ name, type: 'subcategory', children: children.map(i => ({ type: 'item', data: i })) }));
+        } else if (groupBy === 'supplier_category') {
+            const supplierMap = new Map();
+            for (let item of items) {
+                const sup = item.supplier;
+                if (!supplierMap.has(sup)) supplierMap.set(sup, new Map());
+                const catMap = supplierMap.get(sup);
+                const cat = item.category;
+                if (!catMap.has(cat)) catMap.set(cat, []);
+                catMap.get(cat).push(item);
+            }
+            const result = [];
+            for (let [supplier, catMap] of supplierMap.entries()) {
+                const catGroups = [];
+                for (let [category, catItems] of catMap.entries()) {
+                    catGroups.push({ name: category, type: 'category', children: catItems.map(i => ({ type: 'item', data: i })) });
+                }
+                result.push({ name: supplier, type: 'supplier', children: catGroups });
+            }
+            return result;
+        } else if (groupBy === 'supplier_category_subcategory') {
+            const supplierMap = new Map();
+            for (let item of items) {
+                const sup = item.supplier;
+                if (!supplierMap.has(sup)) supplierMap.set(sup, new Map());
+                const catMap = supplierMap.get(sup);
+                const cat = item.category;
+                if (!catMap.has(cat)) catMap.set(cat, new Map());
+                const subMap = catMap.get(cat);
+                const sub = item.subcategory || '(без подкатегории)';
+                if (!subMap.has(sub)) subMap.set(sub, []);
+                subMap.get(sub).push(item);
+            }
+            const result = [];
+            for (let [supplier, catMap] of supplierMap.entries()) {
+                const catGroups = [];
+                for (let [category, subMap] of catMap.entries()) {
+                    const subGroups = [];
+                    for (let [subcategory, subItems] of subMap.entries()) {
+                        subGroups.push({ name: subcategory, type: 'subcategory', children: subItems.map(i => ({ type: 'item', data: i })) });
+                    }
+                    catGroups.push({ name: category, type: 'category', children: subGroups });
+                }
+                result.push({ name: supplier, type: 'supplier', children: catGroups });
+            }
+            return result;
+        }
+        return [];
+    }
+
+    function renderGroup(group, level) {
+        const groupId = `group_${group.type}_${group.name.replace(/[^a-z0-9]/gi, '_')}`;
+        const isCollapsed = collapsedGroups.has(groupId);
+        const indent = level * 20;
+        let html = `<tr class="group-row" data-group-id="${groupId}" data-level="${level}" style="cursor:pointer;">
+                        <td colspan="10">
+                            <span style="display:inline-block; width:${indent}px;"></span>
+                            <strong>📁 ${escapeHtml(group.name)}</strong>
+                            <span class="group-summary"> (${group.children.length})</span>
+                            <span style="float:right;">${isCollapsed ? '▶' : '▼'}</span>
+                           </td>
+                         </tr>`;
+        if (!isCollapsed) {
+            for (let child of group.children) {
+                if (child.type === 'item') {
+                    html += `<tr class="group-content" data-group-parent="${groupId}">${renderItemRow(child.data, true)}</tr>`;
+                } else {
+                    html += renderGroup(child, level + 1);
+                }
+            }
+        }
+        return html;
+    }
+
+    function renderItemRow(item, withCheckbox) {
+        const lowClass = (item.stock <= item.minStock) ? 'low-stock' : '';
+        const isChecked = selectedItems.has(item.id) ? 'checked' : '';
+        const checkboxHtml = withCheckbox ? `<td class="checkbox-col"><input type="checkbox" class="item-checkbox" value="${item.id}" ${isChecked}></td>` : '';
+        return `<tr class="${lowClass}" data-id="${item.id}">
+                    ${checkboxHtml}
+                    <td style="color:#94a3b8;font-size:0.75rem;white-space:nowrap;">${escapeHtml(item.artikul||'')}</td>
+                    <td>${escapeHtml(item.name)}</td>
+                    <td><select class="edit-category" data-id="${item.id}">${categories.map(c => `<option value="${escapeHtml(c)}" ${c===item.category?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></td>
+                    <td><select class="edit-supplier" data-id="${item.id}">${suppliers.map(s => `<option value="${escapeHtml(s)}" ${s===item.supplier?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></td>
+                    <td><select class="edit-subcategory" data-id="${item.id}"><option value="">(без подкатегории)</option>${subcategories.map(sc => `<option value="${escapeHtml(sc)}" ${sc===item.subcategory?'selected':''}>${escapeHtml(sc)}</option>`).join('')}</select></td>
+                    <td><div class="stock-cell"><span class="stock-value editable-stock" data-id="${item.id}" data-stock="${item.stock}">${item.stock}</span>
+                        <div class="stock-controls"><button class="stock-minus" data-id="${item.id}">-1</button><button class="stock-plus" data-id="${item.id}">+1</button></div></div></td>
+                    <td><span class="min-badge editable-min" data-id="${item.id}" data-min="${item.minStock}">${item.minStock}</span></td>
+                    <td><button class="qr-code-btn" data-id="${item.id}" data-artikul="${escapeHtml(item.artikul||'')}" data-name="${escapeHtml(item.name)}">🔲 QR</button></td>
+                    <td><button class="delete-btn" data-id="${item.id}">🗑️</button></td>
+                </table>`;
+    }
+
+    function attachEventHandlers() {
+        document.querySelectorAll('.editable-stock').forEach(el => el.addEventListener('click', stockClickHandler));
+        document.querySelectorAll('.editable-min').forEach(el => el.addEventListener('click', minClickHandler));
+        document.querySelectorAll('.stock-plus').forEach(btn => btn.addEventListener('click', (e) => { adjustStock(btn.dataset.id, 1); }));
+        document.querySelectorAll('.stock-minus').forEach(btn => btn.addEventListener('click', (e) => { adjustStock(btn.dataset.id, -1); }));
+        document.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', (e) => { deleteProduct(btn.dataset.id); }));
+        document.querySelectorAll('.edit-category').forEach(sel => sel.addEventListener('change', (e) => { updateCategory(sel.dataset.id, sel.value); }));
+        document.querySelectorAll('.edit-supplier').forEach(sel => sel.addEventListener('change', (e) => { updateSupplier(sel.dataset.id, sel.value); }));
+        document.querySelectorAll('.edit-subcategory').forEach(sel => sel.addEventListener('change', (e) => { updateSubcategory(sel.dataset.id, sel.value); }));
+        document.querySelectorAll('.group-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                const groupId = row.dataset.groupId;
+                const allGroupRows = document.querySelectorAll(`tr.group-row[data-group-id="${groupId}"], tr.group-content[data-group-parent="${groupId}"], tr.group-row[data-group-id^="${groupId}_"]`);
+                const isCollapsed = row.querySelector('span:last-child').innerText === '▶';
+                allGroupRows.forEach(r => { if (r !== row) r.style.display = isCollapsed ? '' : 'none'; });
+                row.querySelector('span:last-child').innerHTML = isCollapsed ? '▼' : '▶';
+                if (isCollapsed) collapsedGroups.delete(groupId);
+                else collapsedGroups.add(groupId);
+                saveAll();
+            });
+        });
+        const checkboxes = document.querySelectorAll('.item-checkbox');
+        checkboxes.forEach(cb => {
+            cb.removeEventListener('click', checkboxClickHandler);
+            cb.addEventListener('click', checkboxClickHandler);
+        });
+    }
+
+    function checkboxClickHandler(e) {
+        const current = e.currentTarget;
+        const shift = e.shiftKey;
+        if (shift && lastSelectedCheckbox) {
+            const all = Array.from(document.querySelectorAll('.item-checkbox'));
+            const idxLast = all.indexOf(lastSelectedCheckbox);
+            const idxCurr = all.indexOf(current);
+            const start = Math.min(idxLast, idxCurr);
+            const end = Math.max(idxLast, idxCurr);
+            for (let i = start; i <= end; i++) { all[i].checked=true; selectedItems.add(all[i].value); }
+        } else {
+            if (current.checked) selectedItems.add(current.value);
+            else selectedItems.delete(current.value);
+        }
+        lastSelectedCheckbox = current;
+        updateSelectAllState();
+        updateMassActionsVisibility();
+        e.stopPropagation();
+    }
+
+    function updateSelectAllState() {
+        const visible = document.querySelectorAll('.item-checkbox');
+        const selectAll = document.getElementById('selectAllCheckbox');
+        if (selectAll) {
+            const allChecked = visible.length > 0 && Array.from(visible).every(cb => cb.checked);
+            const someChecked = Array.from(visible).some(cb => cb.checked);
+            selectAll.checked = allChecked;
+            selectAll.indeterminate = !allChecked && someChecked;
+        }
+    }
+
+    function stockClickHandler(e) {
+        const span = e.currentTarget;
+        const id = span.dataset.id;
+        const current = parseInt(span.dataset.stock,10);
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = current;
+        input.style.width = '70px';
+        input.style.border = '1px solid #f97316';
+        input.style.borderRadius = '20px';
+        input.style.padding = '4px';
+        const save = () => { updateStock(id, input.value); };
+        input.addEventListener('blur', save);
+        input.addEventListener('keypress', (e) => { if(e.key === 'Enter') save(); });
+        span.innerHTML = '';
+        span.appendChild(input);
+        input.focus();
+    }
+
+    function minClickHandler(e) {
+        const span = e.currentTarget;
+        const id = span.dataset.id;
+        const current = parseInt(span.dataset.min,10);
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = current;
+        input.style.width = '70px';
+        input.style.border = '1px solid #f97316';
+        input.style.borderRadius = '20px';
+        const save = () => { updateMinStock(id, input.value); };
+        input.addEventListener('blur', save);
+        input.addEventListener('keypress', (e) => { if(e.key === 'Enter') save(); });
+        span.innerHTML = '';
+        span.appendChild(input);
+        input.focus();
+    }
+
+    function updateWarningPanel() {
+        const low = inventory.filter(i => i.stock <= i.minStock);
+        const panel = document.getElementById('warningPanel');
+        const list = document.getElementById('warningList');
+        const countSpan = document.getElementById('warningCount');
+        if (low.length === 0) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+        countSpan.innerText = `(${low.length})`;
+        list.innerHTML = low.map(i => `<li>${escapeHtml(i.name)} (${i.category}, ${i.supplier}): остаток ${i.stock} ≤ мин.${i.minStock}
+            <button class="increase-min" data-id="${i.id}">+5</button>
+            <button class="decrease-min" data-id="${i.id}">-5</button>
+        </li>`).join('');
+        document.querySelectorAll('.increase-min').forEach(btn => btn.addEventListener('click', () => { const id = btn.dataset.id; const it = inventory.find(i => i.id === id); if (it) { it.minStock += 5; saveAll(); } }));
+        document.querySelectorAll('.decrease-min').forEach(btn => btn.addEventListener('click', () => { const id = btn.dataset.id; const it = inventory.find(i => i.id === id); if (it && it.minStock >= 5) { it.minStock -= 5; saveAll(); } }));
+    }
+
+    function renderFilters() {
+        const catSelect = document.getElementById('categorySelect');
+        const supSelect = document.getElementById('supplierSelect');
+        const subSelect = document.getElementById('subcategorySelect');
+        const filterCat = document.getElementById('filterCategory');
+        const filterSup = document.getElementById('filterSupplier');
+        const filterSub = document.getElementById('filterSubcategory');
+        catSelect.innerHTML = categories.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+        supSelect.innerHTML = suppliers.map(s => `<option>${escapeHtml(s)}</option>`).join('');
+        subSelect.innerHTML = '<option value="">(без подкатегории)</option>' + subcategories.map(sc => `<option>${escapeHtml(sc)}</option>`).join('');
+        const curCat = filterCat.value, curSup = filterSup.value, curSub = filterSub.value;
+        filterCat.innerHTML = '<option value="all">Все</option>' + categories.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+        filterSup.innerHTML = '<option value="all">Все</option>' + suppliers.map(s => `<option>${escapeHtml(s)}</option>`).join('');
+        filterSub.innerHTML = '<option value="all">Все</option><option value="">(без подкатегории)</option>' + subcategories.map(sc => `<option>${escapeHtml(sc)}</option>`).join('');
+        if (curCat !== 'all' && categories.includes(curCat)) filterCat.value = curCat;
+        else filterCat.value = 'all';
+        if (curSup !== 'all' && suppliers.includes(curSup)) filterSup.value = curSup;
+        else filterSup.value = 'all';
+        if (curSub !== 'all') filterSub.value = curSub;
+        else filterSub.value = 'all';
+        renderLists();
+        document.getElementById('massSupplierSelect').innerHTML = '<option value="">Изменить поставщика на...</option>' + suppliers.map(s => `<option>${escapeHtml(s)}</option>`).join('');
+        document.getElementById('massCategorySelect').innerHTML = '<option value="">Изменить категорию на...</option>' + categories.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+        document.getElementById('massSubcategorySelect').innerHTML = '<option value="">Изменить подкатегорию на...</option><option value="">(без подкатегории)</option>' + subcategories.map(sc => `<option>${escapeHtml(sc)}</option>`).join('');
+    }
+
+    function exportCSV() {
+        const headers = ['Артикул', 'Наименование', 'Категория', 'Поставщик', 'Подкатегория', 'Остаток', 'Минимальный остаток'];
+        const rows = inventory.map(i => [i.artikul||'', i.name, i.category, i.supplier, i.subcategory, i.stock, i.minStock]);
+        const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob(["\uFEFF" + csv], {type: 'text/csv;charset=utf-8;'});
+        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'ostatki_kuhni.csv'; link.click(); URL.revokeObjectURL(blob);
+    }
+
+    function importCSV(file) {
+        function parseCSVLine(line) {
+            const cols = [];
+            let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+                    else inQ = !inQ;
+                } else if (ch === ',' && !inQ) {
+                    cols.push(cur); cur = '';
+                } else {
+                    cur += ch;
+                }
+            }
+            cols.push(cur);
+            return cols.map(v => v.trim());
+        }
+
+        function processText(text) {
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) { alert('Файл пуст'); return; }
+            const headers = parseCSVLine(lines[0]);
+            const find = (kw) => headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
+            const nIdx = find('Наименован');
+            const cIdx = find('Категори');
+            const supIdx = find('Поставщик');
+            const subIdx = find('Подкатегори');
+            const sIdx = find('Остаток');
+            const mIdx = find('Минимальн');
+            if (nIdx === -1 || sIdx === -1) {
+                alert(`Не найдены колонки "Наименование" или "Остаток".\nЗаголовки: ${headers.join(', ')}`);
+                return;
+            }
+            let updated = 0, added = 0, skipped = 0;
+            for (let i = 1; i < lines.length; i++) {
+                const row = parseCSVLine(lines[i]);
+                const name = row[nIdx];
+                if (!name) { skipped++; continue; }
+                const parseNum = (v, def) => {
+                    if (v === undefined || v === '') return def;
+                    const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
+                    return isNaN(n) ? def : Math.round(n);
+                };
+                const stock = parseNum(row[sIdx], 0);
+                const minStock = parseNum(mIdx !== -1 ? row[mIdx] : '', 5);
+                const cat = (cIdx !== -1 && row[cIdx]) ? row[cIdx] : 'Прочее';
+                const sup = (supIdx !== -1 && row[supIdx]) ? row[supIdx] : 'Другой';
+                const sub = (subIdx !== -1 && row[subIdx]) ? row[subIdx] : '';
+                if (!categories.includes(cat)) categories.push(cat);
+                if (!suppliers.includes(sup)) suppliers.push(sup);
+                if (sub && !subcategories.includes(sub)) subcategories.push(sub);
+                const ex = inventory.find(it => it.name.toLowerCase() === name.toLowerCase());
+                if (ex) {
+                    ex.category = cat; ex.supplier = sup; ex.subcategory = sub;
+                    ex.stock = stock; ex.minStock = minStock;
+                    updated++;
+                } else {
+                    inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
+                    added++;
+                }
+            }
+            saveAll();
+            alert(`✅ CSV импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено: ${skipped}`);
+        }
+
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            const hasUtf8Bom = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+            const enc = hasUtf8Bom ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => processText(te.target.result);
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
+    }
+
+    function importKitsTxt(file) {
+        function processText(text) {
+            try {
+                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (!lines.length) { alert('Файл пуст'); return; }
+                let added = 0, updated = 0, skipped = 0;
+                const notFound = [];
+                for (const line of lines) {
+                    const parts = line.split(';').map(p => p.trim()).filter(Boolean);
+                    if (parts.length < 3) { skipped++; continue; }
+                    const kitName = parts[0];
+                    const kitType = parts[1];
+                    const kitParts = [];
+                    for (let i = 2; i < parts.length; i++) {
+                        const seg = parts[i].trim();
+                        if (!seg) continue;
+                        const colonIdx = seg.lastIndexOf(':');
+                        const artikul = colonIdx > 0 ? seg.slice(0, colonIdx).trim() : seg;
+                        const qty = colonIdx > 0 ? parseInt(seg.slice(colonIdx + 1), 10) : 1;
+                        const item = inventory.find(it => it.artikul && it.artikul.replace(/\s+/g,'') === artikul.replace(/\s+/g,''));
+                        if (!item) { notFound.push(`«${artikul}» в «${kitName}»`); continue; }
+                        if (!kitParts.find(p => p.itemId === item.id)) {
+                            kitParts.push({ itemId: item.id, qty: isNaN(qty)||qty<1 ? 1 : qty });
+                        }
+                    }
+                    if (!kitParts.length) { skipped++; continue; }
+                    const existing = kits.find(k => k.name === kitName);
+                    if (existing) {
+                        existing.kitType = kitType;
+                        existing.parts = kitParts;
+                        updated++;
+                    } else {
+                        kits.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name: kitName, kitType, supplier:'', tags:[], note:'', parts: kitParts });
+                        added++;
+                    }
+                }
+                saveAll();
+                let msg = `✅ Импорт наборов завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nПропущено (неполные): ${skipped}`;
+                if (notFound.length) {
+                    msg += `\n\n⚠️ Артикулы не найдены (${notFound.length}):\n` + notFound.slice(0,10).join('\n');
+                    if (notFound.length > 10) msg += `\n...и ещё ${notFound.length-10}`;
+                    msg += '\n\nПроверьте что эти товары уже импортированы из Excel.';
+                }
+                alert(msg);
+            } catch(err) { console.error(err); alert('Ошибка: ' + err.message); }
+        }
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            const enc = (bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF) ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => processText(te.target.result);
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
+    }
+
+    function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
+
+    // ========== МАССОВОЕ ВЫДЕЛЕНИЕ НАБОРОВ ==========
+    function updateKitSelectionUI() {
+        const countSpan = document.getElementById('selectedKitsCount');
+        if (countSpan) countSpan.innerText = selectedKitIds.size;
+        document.querySelectorAll('.kit-select-checkbox').forEach(cb => {
+            cb.checked = selectedKitIds.has(cb.dataset.kitId);
+        });
+    }
+
+    function ensureKitMassBar() {
+        if (document.getElementById('kitMassActionsBar')) return;
+        const container = document.getElementById('kitsContainer');
+        if (!container) return;
+        const bar = document.createElement('div');
+        bar.id = 'kitMassActionsBar';
+        bar.className = 'mass-actions';
+        bar.style.marginBottom = '12px';
+        bar.style.display = 'flex';
+        bar.style.gap = '12px';
+        bar.style.alignItems = 'center';
+        bar.style.flexWrap = 'wrap';
+        bar.innerHTML = `<span>Выбрано наборов: <strong id="selectedKitsCount">0</strong></span>
+            <button id="kitSelectAllBtn" class="btn-outline">Выбрать все</button>
+            <button id="kitClearSelectionBtn" class="btn-outline">Снять выделение</button>
+            <button id="kitDeleteSelectedBtn" style="background:#dc2626;">Удалить выбранные</button>`;
+        container.parentNode.insertBefore(bar, container);
+        document.getElementById('kitSelectAllBtn').addEventListener('click', () => {
+            const visible = getFilteredKits();
+            visible.forEach(k => selectedKitIds.add(k.id));
+            renderKits();
+        });
+        document.getElementById('kitClearSelectionBtn').addEventListener('click', () => {
+            selectedKitIds.clear();
+            renderKits();
+        });
+        document.getElementById('kitDeleteSelectedBtn').addEventListener('click', () => {
+            const cnt = selectedKitIds.size;
+            if (cnt === 0) return;
+            if (confirm(`Удалить выбранные наборы (${cnt} шт.)?`)) {
+                kits = kits.filter(k => !selectedKitIds.has(k.id));
+                selectedKitIds.clear();
+                saveAll();
+                renderKits();
+            }
+        });
+    }
+
+    function handleKitCheckboxChange(e) {
+        const cb = e.currentTarget;
+        const kid = cb.dataset.kitId;
+        if (cb.checked) selectedKitIds.add(kid);
+        else selectedKitIds.delete(kid);
+        updateKitSelectionUI();
     }
 
     // ---------- ГЕНЕРАЦИЯ QR-кода для товара ----------
@@ -566,12 +1643,15 @@
         modal.querySelector('.close-qr').addEventListener('click', () => modal.remove());
     }
 
+    function handleQRClick(e) {
+        const btn = e.currentTarget;
+        const id = btn.dataset.id;
+        const item = inventory.find(i => i.id === id);
+        if (item) generateQRCode(item);
+    }
+
     // ---------- ОТОБРАЖЕНИЕ КАРТОЧКИ ТОВАРА ПО СКАНИРОВАНИЮ ----------
     function showScanResult(item) {
-        // Скрываем основное содержимое контейнера, показываем карточку
-        const container = document.querySelector('.container');
-        const existingOverlay = document.getElementById('scanResultOverlay');
-        if (existingOverlay) existingOverlay.remove();
         const overlay = document.createElement('div');
         overlay.id = 'scanResultOverlay';
         overlay.className = 'scan-result-overlay';
@@ -590,7 +1670,6 @@
         overlay.querySelector('.close-scan').addEventListener('click', () => overlay.remove());
     }
 
-    // Обработка параметра scan при загрузке страницы
     function handleScanParameter() {
         const urlParams = new URLSearchParams(window.location.search);
         const scanCode = urlParams.get('scan');
@@ -598,84 +1677,191 @@
             const item = inventory.find(i => (i.artikul && i.artikul === scanCode) || i.id === scanCode);
             if (item) {
                 showScanResult(item);
-            } else {
-                alert(`Товар с артикулом/кодом "${scanCode}" не найден в базе.`);
-                // Очистим параметр из URL без перезагрузки
+                // Удаляем параметр из URL, чтобы при обновлении карточка не появлялась снова
                 const newUrl = window.location.href.split('?')[0];
                 window.history.replaceState({}, document.title, newUrl);
+            } else {
+                alert(`Товар с артикулом/кодом "${scanCode}" не найден в базе.`);
+                window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
             }
         }
     }
 
-    // Рендер строки таблицы с кнопкой QR
-    function renderItemRow(item, withCheckbox) {
-        const lowClass = (item.stock <= item.minStock) ? 'low-stock' : '';
-        const isChecked = selectedItems.has(item.id) ? 'checked' : '';
-        const checkboxHtml = withCheckbox ? `<td class="checkbox-col"><input type="checkbox" class="item-checkbox" value="${item.id}" ${isChecked}></td>` : '';
-        return `<tr class="${lowClass}" data-id="${item.id}">
-                    ${checkboxHtml}
-                    <td style="color:#94a3b8;font-size:0.75rem;white-space:nowrap;">${escapeHtml(item.artikul||'')}</td>
-                    <td>${escapeHtml(item.name)}</td>
-                    <td><select class="edit-category" data-id="${item.id}">${categories.map(c => `<option value="${escapeHtml(c)}" ${c===item.category?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></td>
-                    <td><select class="edit-supplier" data-id="${item.id}">${suppliers.map(s => `<option value="${escapeHtml(s)}" ${s===item.supplier?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></td>
-                    <td><select class="edit-subcategory" data-id="${item.id}"><option value="">(без подкатегории)</option>${subcategories.map(sc => `<option value="${escapeHtml(sc)}" ${sc===item.subcategory?'selected':''}>${escapeHtml(sc)}</option>`).join('')}</select></td>
-                    <td><div class="stock-cell"><span class="stock-value editable-stock" data-id="${item.id}" data-stock="${item.stock}">${item.stock}</span>
-                        <div class="stock-controls"><button class="stock-minus" data-id="${item.id}">-1</button><button class="stock-plus" data-id="${item.id}">+1</button></div></div></td>
-                    <td><span class="min-badge editable-min" data-id="${item.id}" data-min="${item.minStock}">${item.minStock}</span></td>
-                    <td><button class="qr-code-btn" data-id="${item.id}" data-artikul="${escapeHtml(item.artikul||'')}" data-name="${escapeHtml(item.name)}">🔲 QR</button></td>
-                    <td><button class="delete-btn" data-id="${item.id}">🗑️</button></td>
-                </td>`;
-    }
-
-    function renderTable() {
-        const tbody = document.getElementById('tableBody');
-        let items = getFilteredItems();
-        if (items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:24px;">Нет товаров</td></tr>';
-            return;
-        }
-        groupBy = document.getElementById('groupBySelect').value;
-        if (groupBy === 'none') {
-            tbody.innerHTML = items.map(item => renderItemRow(item, true)).join('');
-        } else {
-            const groups = buildGroupTree(items);
-            let html = '';
-            for (let group of groups) {
-                html += renderGroup(group, 0);
-            }
-            tbody.innerHTML = html;
-        }
-        attachEventHandlers();
-        updateSelectAllState();
-        updateMassActionsVisibility();
-        // Добавляем обработчики для кнопок QR
-        document.querySelectorAll('.qr-code-btn').forEach(btn => {
-            btn.removeEventListener('click', handleQRClick);
-            btn.addEventListener('click', handleQRClick);
-        });
-    }
-
-    function handleQRClick(e) {
-        const btn = e.currentTarget;
-        const id = btn.dataset.id;
-        const item = inventory.find(i => i.id === id);
-        if (item) generateQRCode(item);
-    }
-
-    // Остальные функции (buildGroupTree, renderGroup, attachEventHandlers, и т.д.) полностью копируются из исходного кода.
-    // Для краткости в финальном ответе я предоставлю полный рабочий код, включая все функции.
-    // Ниже приведены только ключевые моменты, но в итоговом HTML будет весь функционал.
-
-    // В финальном коде будут все оригинальные функции (импорт Excel, работа с наборами, синхронизация и т.д.) + добавленные QR.
-
-    // Инициализация
+    // ------------------- ИНИЦИАЛИЗАЦИЯ -------------------
     document.addEventListener('DOMContentLoaded', async () => {
+        const style = document.createElement('style');
+        style.textContent = '@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }';
+        document.head.appendChild(style);
         await loadData();
         saveAll();
         handleScanParameter(); // проверим параметр scan при загрузке
-        // Остальные привязки событий (как в оригинале)...
-        // (здесь должен быть полный код инициализации, но для краткости опущен, в финальном ответе будет полный)
+
+        const byId = id => document.getElementById(id);
+        const on = (id, evt, fn) => { const el = byId(id); if (el) el.addEventListener(evt, fn); };
+
+        const idInput = byId('jsonbinId');
+        const keyInput = byId('jsonbinKey');
+        if (idInput && syncBinId) idInput.value = syncBinId;
+        if (keyInput && syncApiKey) keyInput.value = syncApiKey;
+
+        on('syncSettingsToggle', 'click', () => { const panel = byId('syncSettings'); if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none'; });
+        on('syncSaveSettings', 'click', async () => {
+            const id = (byId('jsonbinId')?.value || '').trim();
+            const key = (byId('jsonbinKey')?.value || '').trim();
+            const errEl = byId('syncError');
+            if (!id || !key) { if(errEl){errEl.textContent='Введите Bin ID и Master Key'; errEl.style.display='';} return; }
+            if (errEl) errEl.style.display = 'none';
+            syncBinId = id; syncApiKey = key;
+            localStorage.setItem('syncBinId', syncBinId);
+            localStorage.setItem('syncApiKey', syncApiKey);
+            const ok = await pullFromCloud();
+            if (ok) { saveAll(); byId('syncSettings').style.display = 'none'; }
+            else { if(errEl){ errEl.textContent='Не удалось подключиться. Проверьте Bin ID и Master Key.'; errEl.style.display=''; } }
+        });
+        on('syncTestBtn', 'click', async () => {
+            const id = (byId('jsonbinId')?.value || '').trim();
+            const key = (byId('jsonbinKey')?.value || '').trim();
+            const errEl = byId('syncError');
+            if (!id || !key) { if(errEl){errEl.textContent='Введите Bin ID и Master Key'; errEl.style.display='';} return; }
+            if(errEl) errEl.style.display = 'none';
+            setSyncStatus('loading', 'Проверка подключения…');
+            try {
+                const res = await fetch(`${JSONBIN_BASE}/${id}/latest`, { headers: { 'X-Master-Key': key, 'X-Access-Key': key, 'X-Bin-Meta': 'false' } });
+                if (res.status === 403 || res.status === 401) throw new Error(`Ошибка ${res.status}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                setSyncStatus('ok', '✅ Подключение работает!');
+                if(errEl){ errEl.style.background='#dcfce7'; errEl.style.color='#16a34a'; errEl.textContent='✅ Подключение успешно! Теперь нажмите «Сохранить и подключить»'; errEl.style.display=''; }
+            } catch(e) {
+                if(errEl){ errEl.textContent = '❌ Ошибка: ' + e.message; errEl.style.display=''; }
+                setSyncStatus('error', 'Ошибка подключения');
+            }
+        });
+        on('syncClearSettings', 'click', () => {
+            syncBinId = ''; syncApiKey = '';
+            localStorage.removeItem('syncBinId'); localStorage.removeItem('syncApiKey');
+            if(byId('jsonbinId')) byId('jsonbinId').value = '';
+            if(byId('jsonbinKey')) byId('jsonbinKey').value = '';
+            setSyncStatus('off', 'Синхронизация отключена');
+            byId('syncSettings').style.display = 'none';
+        });
+        on('syncNowBtn', 'click', async () => { await pullFromCloud(); saveAll(); });
+
+        on('addBtn', 'click', () => {
+            const name = byId('productName').value;
+            const artikul = byId('productArtikul').value;
+            const cat = byId('categorySelect').value;
+            const sup = byId('supplierSelect').value;
+            const sub = byId('subcategorySelect').value;
+            const stock = byId('initialStock').value;
+            const minStock = byId('minStock').value;
+            if (addProduct(name, artikul, cat, sup, sub, stock, minStock)) {
+                byId('productName').value = '';
+                byId('productArtikul').value = '';
+                byId('initialStock').value = '0';
+            }
+        });
+        on('addSupplierBtn', 'click', () => { addSupplier(byId('newSupplierName').value); byId('newSupplierName').value = ''; });
+        on('addCategoryBtn', 'click', () => { addCategory(byId('newCategoryName').value); byId('newCategoryName').value = ''; });
+        on('addSubcategoryBtn', 'click', () => { addSubcategory(byId('newSubcategory').value); byId('newSubcategory').value = ''; });
+        on('applyDefaultMinBtn', 'click', setDefaultMinForAll);
+        on('setAllMinBtn', 'click', setMinForAll);
+        on('exportCsvBtn', 'click', exportCSV);
+        on('filterCategory', 'change', () => renderTable());
+        on('filterSupplier', 'change', () => renderTable());
+        on('filterSubcategory', 'change', () => renderTable());
+        on('searchName', 'input', () => renderTable());
+        on('groupBySelect', 'change', () => { groupBy = byId('groupBySelect').value; saveAll(); });
+        on('resetFilters', 'click', () => {
+            byId('filterCategory').value = 'all';
+            byId('filterSupplier').value = 'all';
+            byId('filterSubcategory').value = 'all';
+            byId('searchName').value = '';
+            renderTable();
+        });
+        on('selectAllCheckbox', 'change', e => {
+            document.querySelectorAll('.item-checkbox').forEach(cb => {
+                cb.checked = e.target.checked;
+                if (e.target.checked) selectedItems.add(cb.value);
+                else selectedItems.delete(cb.value);
+            });
+            updateSelectAllState();
+            updateMassActionsVisibility();
+        });
+        on('massSupplierSelect', 'change', applyMassSupplier);
+        on('massCategorySelect', 'change', applyMassCategory);
+        on('massSubcategorySelect', 'change', applyMassSubcategory);
+        on('applyMassMinBtn', 'click', applyMassMinStock);
+        on('deleteSelectedBtn', 'click', deleteSelected);
+        on('clearSelectionBtn', 'click', clearSelection);
+        on('newKitBtn', 'click', () => openKitBuilder(null));
+        on('addKitPartBtn', 'click', () => addKitPartRow());
+        on('saveKitBtn', 'click', saveKit);
+        on('cancelKitBtn', 'click', () => { byId('kitBuilder').style.display = 'none'; editingKitId = null; });
+        on('kitGroupBy', 'change', () => { kitGroupBy = byId('kitGroupBy').value; renderKits(); });
+        on('kitFilterSupplier', 'change', renderKits);
+        on('kitFilterType', 'change', renderKits);
+        on('kitSearch', 'input', renderKits);
+        on('kitResetFilters', 'click', () => {
+            const s = byId('kitFilterSupplier'); if (s) s.value = 'all';
+            const t = byId('kitFilterType'); if (t) t.value = 'all';
+            const q = byId('kitSearch'); if (q) q.value = '';
+            renderKits();
+        });
+        const excelInput = byId('importExcelInput');
+        if (excelInput) excelInput.addEventListener('change', e => { if (e.target.files[0]) importExcel(e.target.files[0]); excelInput.value = ''; });
+        const csvInput = byId('importCsvInput');
+        if (csvInput) csvInput.addEventListener('change', e => { if (e.target.files[0]) importCSV(e.target.files[0]); csvInput.value = ''; });
+        const kitsTxtInput = byId('importKitsTxtInput');
+        if (kitsTxtInput) kitsTxtInput.addEventListener('change', e => { if (e.target.files[0]) importKitsTxt(e.target.files[0]); kitsTxtInput.value = ''; });
     });
+
+    // ========== СВОРАЧИВАНИЕ ВСЕГО БЛОКА НАБОРОВ (исправленная версия) ==========
+    (function() {
+        const wrapper = document.getElementById('kitsSectionWrapper');
+        if (!wrapper) {
+            console.warn('Не найден контейнер #kitsSectionWrapper');
+            return;
+        }
+        const headerDiv = wrapper.querySelector('div[style*="display:flex"]');
+        if (!headerDiv) {
+            console.warn('Не найден заголовок внутри wrapper');
+            return;
+        }
+        if (document.getElementById('toggleKitsSectionBtn')) return;
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'toggleKitsSectionBtn';
+        toggleBtn.className = 'btn-outline';
+        toggleBtn.style.fontSize = '0.75rem';
+        toggleBtn.style.padding = '4px 12px';
+        toggleBtn.textContent = 'Свернуть наборы';
+        headerDiv.appendChild(toggleBtn);
+        let contentToToggle = [];
+        let next = headerDiv.nextElementSibling;
+        while (next) {
+            contentToToggle.push(next);
+            next = next.nextElementSibling;
+        }
+        function setKitsSectionCollapsed(collapsed) {
+            if (collapsed) {
+                contentToToggle.forEach(el => el.style.display = 'none');
+                toggleBtn.textContent = 'Развернуть наборы';
+            } else {
+                contentToToggle.forEach(el => el.style.display = '');
+                toggleBtn.textContent = 'Свернуть наборы';
+            }
+            localStorage.setItem('kitsSectionCollapsed', collapsed ? '1' : '0');
+        }
+        const saved = localStorage.getItem('kitsSectionCollapsed');
+        if (saved === '1') {
+            setKitsSectionCollapsed(true);
+        } else {
+            setKitsSectionCollapsed(false);
+        }
+        toggleBtn.addEventListener('click', () => {
+            const isCollapsed = toggleBtn.textContent === 'Развернуть наборы';
+            setKitsSectionCollapsed(!isCollapsed);
+        });
+    })();
 </script>
 </body>
 </html>
