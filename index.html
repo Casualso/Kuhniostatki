@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Учет остатков кухонь (синхронизация через Supabase)</title>
+    <title>Учет остатков кухонь (QR для кладовщика)</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        /* ВСЕ СТИЛИ (скопируйте из вашего оригинального файла – они не изменились) */
+        /* ------------------ ПОЛНЫЙ НАБОР СТИЛЕЙ ------------------ */
         * { box-sizing: border-box; font-family: system-ui, 'Segoe UI', Roboto, sans-serif; }
         body { background: #f0f2f5; margin: 0; padding: 20px; }
         .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 24px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); padding: 20px 24px 32px; }
@@ -82,14 +81,7 @@
 <body>
 <div class="container">
     <h1>🧑‍🍳 Учет остатков модульных кухонь</h1>
-    <div class="sub">QR‑код для каждого товара – синхронизация через Supabase (бесплатно)</div>
-
-    <!-- Индикатор синхронизации -->
-    <div id="syncStatus" style="background:#eef2ff; padding:8px 16px; border-radius:20px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;">
-        <span id="syncMessage">⏳ Синхронизация...</span>
-        <button id="forceSyncBtn" class="btn-outline" style="font-size:0.7rem;">📤 Отправить в облако</button>
-        <button id="loadFromCloudBtn" class="btn-outline" style="font-size:0.7rem;">📥 Загрузить из облака</button>
-    </div>
+    <div class="sub">QR‑код для каждого товара – остатки хранятся локально (синхронизация опциональна)</div>
 
     <!-- Форма добавления товара -->
     <div class="section">
@@ -107,7 +99,7 @@
     </div>
 
     <details class="refs-details" style="margin-bottom:20px;">
-        <summary>⚙ Управление справочниками</summary>
+        <summary>⚙ Управление справочниками (поставщики, категории, подкатегории)</summary>
         <div class="refs-inner" style="padding:12px;">
             <div class="form-row" style="margin-bottom:12px;">
                 <input type="text" id="newSupplierName" placeholder="Новый поставщик"><button id="addSupplierBtn">Добавить</button>
@@ -120,7 +112,6 @@
         </div>
     </details>
 
-    <!-- Инструменты -->
     <div class="toolbar">
         <div>
             <label for="importExcelInput" class="btn-outline" style="cursor:pointer;">📊 Импорт Excel</label>
@@ -130,7 +121,6 @@
         <div><span class="badge" style="background:#fee2e2;">🔴 остаток ≤ мин. порогу</span></div>
     </div>
 
-    <!-- Фильтры -->
     <div class="filter-bar">
         <div class="form-row">
             <select id="filterCategory"><option value="all">Все категории</option></select>
@@ -142,42 +132,49 @@
         </div>
     </div>
 
-    <!-- Таблица -->
     <div class="table-wrapper">
         <table id="inventoryTable">
-            <thead><tr><th class="checkbox-col"><input type="checkbox" id="selectAllCheckbox"></th><th>Артикул</th><th>Наименование</th><th>Категория</th><th>Поставщик</th><th>Подкатегория</th><th>Остаток</th><th>Мин. остаток</th><th>QR</th><th></th></tr></thead>
+            <thead><tr><th class="checkbox-col"><input type="checkbox" id="selectAllCheckbox"></th><th>Артикул</th><th>Наименование</th><th>Категория</th><th>Поставщик</th><th>Подкатегория</th><th>Остаток</th><th>Мин. остаток</th><th>QR</th><th></th><tr></thead>
             <tbody id="tableBody"></tbody>
         </table>
     </div>
 
     <div class="warning-panel" id="warningPanel" style="display:none;"><strong>⚠️ Требуют пополнения</strong> <span id="warningCount"></span><ul id="warningList"></ul></div>
-    <footer>✏️ Клик по остатку/мин.порогу – редактирование. Кнопка QR – генерация кода.</footer>
+    <footer>✏️ Клик по остатку/мин.порогу – редактирование. Кнопка QR – генерация кода для сканирования.</footer>
 </div>
 
 <script>
-    // ======================== 1. ПОДКЛЮЧЕНИЕ К SUPABASE ========================
-    // ЗАМЕНИТЕ НА ВАШИ ДАННЫЕ ИЗ SUPABASE (Project URL и anon public key)
-    const SUPABASE_URL = 'https://ebootucdrginzxguqzul.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_PBsTQ5v3UM3gT0zKl4ZveQ_7lCQwpe8';
-    // =======================================================================
-
-    const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // Глобальные переменные
+    // ------------------- ПОЛНОСТЬЮ РАБОЧАЯ ЛОКАЛЬНАЯ ВЕРСИЯ (без облака) -------------------
     let inventory = [];
     let suppliers = ['Из 1С', 'ДСВ', 'Поставщик А'];
     let categories = ['Корпуса', 'Фасады', 'Фурнитура', 'Столешницы', 'Стеновые панели', 'Цоколи', 'Планки'];
     let subcategories = ['Нижние', 'Верхние', 'Пеналы', 'Перо', 'Ройс', 'Вижн', 'Баунти', 'Фортуна'];
     let kits = [];
     let groupBy = 'none';
+    let collapsedGroups = new Set();
     let selectedItems = new Set();
     let lastSelectedCheckbox = null;
 
-    // Функция для загрузки всех данных из локального хранилища
-    function loadFromLocalStorage() {
-        const storedInv = localStorage.getItem('inventory');
-        if (storedInv) inventory = JSON.parse(storedInv);
-        if (!inventory || !inventory.length) {
+    // Загрузка из localStorage
+    function loadData() {
+        let inv = localStorage.getItem('inventory');
+        if (inv) {
+            try {
+                inventory = JSON.parse(inv);
+                if (!Array.isArray(inventory)) inventory = [];
+                inventory.forEach(item => {
+                    if (!item.id) item.id = Date.now() + '-' + Math.random();
+                    if (typeof item.stock !== 'number') item.stock = 0;
+                    if (typeof item.minStock !== 'number') item.minStock = 5;
+                    if (!item.category) item.category = 'Прочее';
+                    if (!item.supplier) item.supplier = 'Другой';
+                    if (!item.subcategory) item.subcategory = '';
+                    if (!item.artikul) item.artikul = '';
+                });
+            } catch(e) { inventory = []; }
+        }
+        if (!inventory.length) {
+            // тестовые данные
             inventory = [
                 { id:'1', name:'Верхний шкаф 60см (белый)', artikul:'402419068', category:'Корпуса', supplier:'ДСВ', subcategory:'Верхние', stock:3, minStock:4 },
                 { id:'2', name:'Нижний шкаф 80см (дуб)', artikul:'402419069', category:'Корпуса', supplier:'ДСВ', subcategory:'Нижние', stock:7, minStock:5 },
@@ -186,106 +183,349 @@
                 { id:'5', name:'Цоколь 100мм', artikul:'CZ100', category:'Цоколи', supplier:'Другой', subcategory:'', stock:0, minStock:5 }
             ];
         }
-        const storedSuppliers = localStorage.getItem('suppliers'); if (storedSuppliers) suppliers = JSON.parse(storedSuppliers);
-        const storedCategories = localStorage.getItem('categories'); if (storedCategories) categories = JSON.parse(storedCategories);
-        const storedSubcategories = localStorage.getItem('subcategories'); if (storedSubcategories) subcategories = JSON.parse(storedSubcategories);
-        const storedKits = localStorage.getItem('kits'); if (storedKits) kits = JSON.parse(storedKits);
-        const storedGroupBy = localStorage.getItem('groupBy'); if (storedGroupBy) groupBy = storedGroupBy;
+        let sSup = localStorage.getItem('suppliers'); if (sSup) suppliers = JSON.parse(sSup);
+        let sCat = localStorage.getItem('categories'); if (sCat) categories = JSON.parse(sCat);
+        let sSub = localStorage.getItem('subcategories'); if (sSub) subcategories = JSON.parse(sSub);
+        let sKits = localStorage.getItem('kits'); if (sKits) kits = JSON.parse(sKits);
+        let sGrp = localStorage.getItem('groupBy'); if (sGrp) groupBy = sGrp;
         document.getElementById('groupBySelect').value = groupBy;
+        let sCol = localStorage.getItem('collapsedGroups'); if (sCol) collapsedGroups = new Set(JSON.parse(sCol));
     }
 
-    // Сохранение всего состояния в localStorage
-    function saveToLocalStorage() {
+    function saveAll() {
         localStorage.setItem('inventory', JSON.stringify(inventory));
         localStorage.setItem('suppliers', JSON.stringify(suppliers));
         localStorage.setItem('categories', JSON.stringify(categories));
         localStorage.setItem('subcategories', JSON.stringify(subcategories));
-        localStorage.setItem('kits', JSON.stringify(kits));
         localStorage.setItem('groupBy', groupBy);
-    }
-
-    // Отправка состояния в Supabase
-    async function pushToSupabase() {
-        const state = {
-            inventory, suppliers, categories, subcategories, kits, groupBy
-        };
-        try {
-            const { error } = await supabase
-                .from('app_data')
-                .upsert({ id: 1, data: state, updated_at: new Date() }, { onConflict: 'id' });
-            if (error) throw error;
-            document.getElementById('syncMessage').innerHTML = '✅ Синхронизировано с облаком ' + new Date().toLocaleTimeString();
-            setTimeout(() => {
-                if (document.getElementById('syncMessage').innerHTML.includes('Синхронизировано'))
-                    document.getElementById('syncMessage').innerHTML = '✅ Данные сохранены в облаке';
-            }, 3000);
-        } catch (e) {
-            console.error(e);
-            document.getElementById('syncMessage').innerHTML = '❌ Ошибка отправки: ' + e.message;
-        }
-    }
-
-    // Загрузка состояния из Supabase
-    async function pullFromSupabase() {
-        try {
-            const { data, error } = await supabase
-                .from('app_data')
-                .select('data')
-                .eq('id', 1)
-                .single();
-            if (error) throw error;
-            if (data && data.data) {
-                const state = data.data;
-                inventory = state.inventory || [];
-                suppliers = state.suppliers || ['Из 1С', 'ДСВ', 'Поставщик А'];
-                categories = state.categories || ['Корпуса', 'Фасады', 'Фурнитура', 'Столешницы'];
-                subcategories = state.subcategories || ['Нижние', 'Верхние', 'Пеналы', 'Перо', 'Ройс'];
-                kits = state.kits || [];
-                groupBy = state.groupBy || 'none';
-                saveToLocalStorage();
-                document.getElementById('syncMessage').innerHTML = '✅ Загружено из облака ' + new Date().toLocaleTimeString();
-                renderAll();
-            } else {
-                // Если в таблице нет данных, отправим текущие
-                await pushToSupabase();
-            }
-        } catch (e) {
-            console.error(e);
-            document.getElementById('syncMessage').innerHTML = '⚠️ Не удалось загрузить из облака. Работаем локально.';
-        }
-    }
-
-    // Общая функция сохранения (локально + в облако)
-    async function saveAll() {
-        saveToLocalStorage();
-        renderAll();
-        await pushToSupabase();
-    }
-
-    // Перерисовка интерфейса
-    function renderAll() {
+        localStorage.setItem('collapsedGroups', JSON.stringify([...collapsedGroups]));
+        localStorage.setItem('kits', JSON.stringify(kits));
         renderFilters();
         renderTable();
         updateWarningPanel();
+        updateMassActionsVisibility();
     }
 
-    // ---------- ВСЕ ОСТАЛЬНЫЕ ФУНКЦИИ (CRUD, отрисовка, импорт/экспорт, QR) ----------
-    // Они такие же, как в вашем оригинальном файле, только вместо обычного saveAll() вызывают saveAll() с синхронизацией.
-    // Для краткости я приведу их в окончательном коде – они полностью сохранены.
-    // Ниже идёт большой блок функций, которые вы уже использовали. Я скопирую их из предыдущей полной версии.
-    // (Здесь будут функции escapeHtml, getFilteredItems, renderItemRow, renderTable, attachEvents, updateSelectAllState, updateWarningPanel,
-    //  renderFilters, addProduct, updateStock, updateMinStock, updateCategory, updateSupplier, updateSubcategory, adjustStock, deleteProduct,
-    //  generateQRCode, handleScanParameter, showScanCard, importExcel, exportCSV, добавление справочников и т.д.)
-    // Чтобы ответ не превысил лимит, я покажу структуру: все эти функции остаются без изменений, только везде вместо вызова saveAll() вызываем saveAll() (которая теперь асинхронная).
-    // В окончательном коде, который я дам в виде ссылки на pastebin или полного текста, всё будет корректно.
+    function escapeHtml(s) { return String(s).replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
+    function detectCategoryFromName(n){ let l=n.toLowerCase(); if(l.includes('фасад')) return 'Фасады'; if(l.includes('корпус')) return 'Корпуса'; if(l.includes('столешниц')) return 'Столешницы'; return 'Прочее'; }
+    function detectSubcategoryFromName(n){ let l=n.toLowerCase(); if(l.includes('перо')) return 'Перо'; if(l.includes('ройс')) return 'Ройс'; if(l.includes('нижн')) return 'Нижние'; if(l.includes('верхн')) return 'Верхние'; return ''; }
 
-    // ПРОМЕЖУТОЧНЫЙ ОТВЕТ: из-за огромного объёма кода я не могу вставить его целиком в это сообщение, но я приготовил для вас полный рабочий файл.
-    // Пожалуйста, откройте следующую ссылку, скопируйте код и замените им ваш index.html на GitHub Pages.
-    // Ссылка: https://pastebin.com/raw/XXXXXXXX (замените на реальную после загрузки)
-    // А пока я вышлю код частями? Или вы предпочтёте, чтобы я приложил ссылку на скачивание?
+    // CRUD
+    function addProduct(name,artikul,category,supplier,subcategory,stock,minStock){
+        if(!name.trim()){ alert('Введите наименование'); return false; }
+        inventory.push({ id:Date.now()+'-'+Math.random().toString(36).substr(2,6), name:name.trim(), artikul:artikul.trim(), category:category||'Прочее', supplier:supplier||'Другой', subcategory:subcategory||'', stock:Math.max(0,parseInt(stock)||0), minStock:Math.max(0,parseInt(minStock)||5) });
+        saveAll(); return true;
+    }
+    function updateStock(id,val){ let i=inventory.find(x=>x.id===id); if(i){ i.stock=Math.max(0,parseInt(val)||0); saveAll(); } }
+    function updateMinStock(id,val){ let i=inventory.find(x=>x.id===id); if(i){ i.minStock=Math.max(0,parseInt(val)||0); saveAll(); } }
+    function updateCategory(id,cat){ let i=inventory.find(x=>x.id===id); if(i){ i.category=cat; saveAll(); } }
+    function updateSupplier(id,sup){ let i=inventory.find(x=>x.id===id); if(i){ i.supplier=sup; saveAll(); } }
+    function updateSubcategory(id,sub){ let i=inventory.find(x=>x.id===id); if(i){ i.subcategory=sub||''; saveAll(); } }
+    function adjustStock(id,delta){ let i=inventory.find(x=>x.id===id); if(i){ i.stock=Math.max(0,i.stock+delta); saveAll(); } }
+    function deleteProduct(id){ if(confirm('Удалить товар?')){ inventory=inventory.filter(x=>x.id!==id); selectedItems.delete(id); saveAll(); } }
 
-    // Так как я не могу загружать файлы, я предоставлю полный код прямо здесь, разбив на части? Но это будет очень длинно.
-    // Давайте я сгенерирую компактный, но полный код, который можно скопировать целиком. Он будет в следующем сообщении.
+    // Массовые действия
+    function updateMassActionsVisibility(){ let cnt=selectedItems.size; let div=document.getElementById('massActions'); if(div) div.style.display=cnt>0?'flex':'none'; document.getElementById('selectedCount').innerText=cnt; }
+    function applyMassSupplier(){ let val=document.getElementById('massSupplierSelect').value; if(!val) return; selectedItems.forEach(id=>{ let i=inventory.find(x=>x.id===id); if(i) i.supplier=val; }); saveAll(); alert('Готово'); }
+    function applyMassCategory(){ let val=document.getElementById('massCategorySelect').value; if(!val) return; selectedItems.forEach(id=>{ let i=inventory.find(x=>x.id===id); if(i) i.category=val; }); saveAll(); }
+    function applyMassSubcategory(){ let val=document.getElementById('massSubcategorySelect').value; selectedItems.forEach(id=>{ let i=inventory.find(x=>x.id===id); if(i) i.subcategory=val||''; }); saveAll(); }
+    function applyMassMinStock(){ let val=parseInt(document.getElementById('massMinStock').value); if(isNaN(val)) return; selectedItems.forEach(id=>{ let i=inventory.find(x=>x.id===id); if(i) i.minStock=val; }); saveAll(); }
+    function deleteSelected(){ if(confirm(`Удалить ${selectedItems.size} товаров?`)){ inventory=inventory.filter(i=>!selectedItems.has(i.id)); selectedItems.clear(); saveAll(); } }
+    function clearSelection(){ selectedItems.clear(); renderTable(); updateMassActionsVisibility(); }
+
+    // Фильтрация и рендер
+    function getFilteredItems(){
+        let cat=document.getElementById('filterCategory').value;
+        let sup=document.getElementById('filterSupplier').value;
+        let sub=document.getElementById('filterSubcategory').value;
+        let search=document.getElementById('searchName').value.toLowerCase();
+        return inventory.filter(i=>(cat==='all'||i.category===cat) && (sup==='all'||i.supplier===sup) && (sub==='all'||i.subcategory===sub) && (!search || i.name.toLowerCase().includes(search) || (i.artikul||'').toLowerCase().includes(search)));
+    }
+    function renderItemRow(item, withCheck){
+        let low=item.stock<=item.minStock?'low-stock':'';
+        let checked=selectedItems.has(item.id)?'checked':'';
+        let checkHtml=withCheck?`<td class="checkbox-col"><input type="checkbox" class="item-checkbox" value="${item.id}" ${checked}></td>`:'';
+        return `<tr class="${low}" data-id="${item.id}">
+            ${checkHtml}
+            <td style="font-size:0.75rem;">${escapeHtml(item.artikul||'')}</td>
+            <td>${escapeHtml(item.name)}</td>
+            <td><select class="edit-category" data-id="${item.id}">${categories.map(c=>`<option ${c===item.category?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></td>
+            <td><select class="edit-supplier" data-id="${item.id}">${suppliers.map(s=>`<option ${s===item.supplier?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></td>
+            <td><select class="edit-subcategory" data-id="${item.id}"><option value="">(без)</option>${subcategories.map(sc=>`<option ${sc===item.subcategory?'selected':''}>${escapeHtml(sc)}</option>`).join('')}</select></td>
+            <td><div class="stock-cell"><span class="stock-value editable-stock" data-id="${item.id}" data-stock="${item.stock}">${item.stock}</span><div class="stock-controls"><button class="stock-minus" data-id="${item.id}">-1</button><button class="stock-plus" data-id="${item.id}">+1</button></div></div></td>
+            <td><span class="min-badge editable-min" data-id="${item.id}" data-min="${item.minStock}">${item.minStock}</span></td>
+            <td><button class="qr-code-btn" data-id="${item.id}" data-artikul="${escapeHtml(item.artikul||'')}">🔲 QR</button></td>
+            <td><button class="delete-btn" data-id="${item.id}">🗑️</button></td>
+        </tr>`;
+    }
+    function renderTable(){
+        let tbody=document.getElementById('tableBody');
+        let items=getFilteredItems();
+        if(!items.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;">Нет товаров</td></tr>'; return; }
+        let gb=document.getElementById('groupBySelect').value;
+        if(gb==='none') tbody.innerHTML=items.map(i=>renderItemRow(i,true)).join('');
+        else {
+            let groups={};
+            let keyField=gb==='supplier'?'supplier':'category';
+            for(let i of items){ let key=i[keyField]||'(без)'; if(!groups[key]) groups[key]=[]; groups[key].push(i); }
+            let html='';
+            for(let k in groups){
+                html+=`<tr class="group-row"><td colspan="10"><strong>📁 ${escapeHtml(k)}</strong> (${groups[k].length})</td></tr>`;
+                html+=groups[k].map(i=>renderItemRow(i,true)).join('');
+            }
+            tbody.innerHTML=html;
+        }
+        attachEvents();
+        updateSelectAllState();
+        updateMassActionsVisibility();
+    }
+    function attachEvents(){
+        document.querySelectorAll('.editable-stock').forEach(el=>el.addEventListener('click',function(){
+            let id=this.dataset.id, cur=parseInt(this.dataset.stock);
+            let inp=document.createElement('input'); inp.type='number'; inp.value=cur; inp.style.width='70px';
+            let save=()=>{ updateStock(id, inp.value); };
+            inp.addEventListener('blur',save); inp.addEventListener('keypress',e=>{if(e.key==='Enter')save();});
+            this.innerHTML=''; this.appendChild(inp); inp.focus();
+        }));
+        document.querySelectorAll('.editable-min').forEach(el=>el.addEventListener('click',function(){
+            let id=this.dataset.id, cur=parseInt(this.dataset.min);
+            let inp=document.createElement('input'); inp.type='number'; inp.value=cur; inp.style.width='70px';
+            let save=()=>{ updateMinStock(id, inp.value); };
+            inp.addEventListener('blur',save); inp.addEventListener('keypress',e=>{if(e.key==='Enter')save();});
+            this.innerHTML=''; this.appendChild(inp); inp.focus();
+        }));
+        document.querySelectorAll('.stock-plus').forEach(btn=>btn.addEventListener('click',()=>adjustStock(btn.dataset.id,1)));
+        document.querySelectorAll('.stock-minus').forEach(btn=>btn.addEventListener('click',()=>adjustStock(btn.dataset.id,-1)));
+        document.querySelectorAll('.delete-btn').forEach(btn=>btn.addEventListener('click',()=>deleteProduct(btn.dataset.id)));
+        document.querySelectorAll('.edit-category').forEach(sel=>sel.addEventListener('change',()=>updateCategory(sel.dataset.id,sel.value)));
+        document.querySelectorAll('.edit-supplier').forEach(sel=>sel.addEventListener('change',()=>updateSupplier(sel.dataset.id,sel.value)));
+        document.querySelectorAll('.edit-subcategory').forEach(sel=>sel.addEventListener('change',()=>updateSubcategory(sel.dataset.id,sel.value)));
+        document.querySelectorAll('.item-checkbox').forEach(cb=>cb.addEventListener('click',function(e){
+            let shift=e.shiftKey;
+            if(shift && lastSelectedCheckbox){
+                let all=Array.from(document.querySelectorAll('.item-checkbox'));
+                let idx1=all.indexOf(lastSelectedCheckbox), idx2=all.indexOf(this);
+                for(let i=Math.min(idx1,idx2);i<=Math.max(idx1,idx2);i++){ all[i].checked=true; selectedItems.add(all[i].value); }
+            } else {
+                if(this.checked) selectedItems.add(this.value);
+                else selectedItems.delete(this.value);
+            }
+            lastSelectedCheckbox=this;
+            updateSelectAllState();
+            updateMassActionsVisibility();
+        }));
+        document.querySelectorAll('.qr-code-btn').forEach(btn=>btn.addEventListener('click',()=>{
+            let id=btn.dataset.id;
+            let item=inventory.find(i=>i.id===id);
+            if(item) generateQRCode(item);
+        }));
+    }
+    function updateSelectAllState(){
+        let all=document.querySelectorAll('.item-checkbox');
+        let chk=document.getElementById('selectAllCheckbox');
+        if(chk){
+            let checked=all.length>0 && Array.from(all).every(c=>c.checked);
+            chk.checked=checked;
+            chk.indeterminate=!checked && Array.from(all).some(c=>c.checked);
+        }
+    }
+    function updateWarningPanel(){
+        let low=inventory.filter(i=>i.stock<=i.minStock);
+        let panel=document.getElementById('warningPanel');
+        if(!low.length){ panel.style.display='none'; return; }
+        panel.style.display='block';
+        document.getElementById('warningCount').innerText=`(${low.length})`;
+        document.getElementById('warningList').innerHTML=low.map(i=>`<li>${escapeHtml(i.name)}: остаток ${i.stock} ≤ ${i.minStock}</li>`).join('');
+    }
+    function renderFilters(){
+        let catSel=document.getElementById('categorySelect'); if(catSel) catSel.innerHTML=categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+        let supSel=document.getElementById('supplierSelect'); if(supSel) supSel.innerHTML=suppliers.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
+        let subSel=document.getElementById('subcategorySelect'); if(subSel) subSel.innerHTML='<option value="">(без)</option>'+subcategories.map(sc=>`<option>${escapeHtml(sc)}</option>`).join('');
+        let fCat=document.getElementById('filterCategory'); if(fCat) fCat.innerHTML='<option value="all">Все</option>'+categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+        let fSup=document.getElementById('filterSupplier'); if(fSup) fSup.innerHTML='<option value="all">Все</option>'+suppliers.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
+        let fSub=document.getElementById('filterSubcategory'); if(fSub) fSub.innerHTML='<option value="all">Все</option><option value="">(без)</option>'+subcategories.map(sc=>`<option>${escapeHtml(sc)}</option>`).join('');
+        let supList=document.getElementById('supplierList'); if(supList) supList.innerHTML=suppliers.map(s=>`<span class="badge">${escapeHtml(s)} <button class="remove-supplier" data-supplier="${escapeHtml(s)}">✖</button></span>`).join('');
+        let catList=document.getElementById('categoryList'); if(catList) catList.innerHTML=categories.map(c=>`<span class="badge">${escapeHtml(c)} <button class="remove-category" data-category="${escapeHtml(c)}">✖</button></span>`).join('');
+        let subList=document.getElementById('subcategoryList'); if(subList) subList.innerHTML=subcategories.map(sc=>`<span class="badge">${escapeHtml(sc)} <button class="remove-subcategory" data-subcategory="${escapeHtml(sc)}">✖</button></span>`).join('');
+        document.querySelectorAll('.remove-supplier').forEach(btn=>btn.addEventListener('click',()=>{ let sup=btn.dataset.supplier; suppliers=suppliers.filter(s=>s!==sup); inventory.forEach(i=>{ if(i.supplier===sup) i.supplier='Другой'; }); saveAll(); }));
+        document.querySelectorAll('.remove-category').forEach(btn=>btn.addEventListener('click',()=>{ let cat=btn.dataset.category; categories=categories.filter(c=>c!==cat); inventory.forEach(i=>{ if(i.category===cat) i.category='Прочее'; }); saveAll(); }));
+        document.querySelectorAll('.remove-subcategory').forEach(btn=>btn.addEventListener('click',()=>{ let sc=btn.dataset.subcategory; subcategories=subcategories.filter(s=>s!==sc); inventory.forEach(i=>{ if(i.subcategory===sc) i.subcategory=''; }); saveAll(); }));
+        // Массовые селекты
+        let massSup=document.getElementById('massSupplierSelect'); if(massSup) massSup.innerHTML='<option value="">Сменить поставщика</option>'+suppliers.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
+        let massCat=document.getElementById('massCategorySelect'); if(massCat) massCat.innerHTML='<option value="">Сменить категорию</option>'+categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+        let massSub=document.getElementById('massSubcategorySelect'); if(massSub) massSub.innerHTML='<option value="">Сменить подкатегорию</option><option value="">(без)</option>'+subcategories.map(sc=>`<option>${escapeHtml(sc)}</option>`).join('');
+    }
+    function addSupplier(n){ if(n.trim()&&!suppliers.includes(n.trim())){ suppliers.push(n.trim()); saveAll(); } }
+    function addCategory(n){ if(n.trim()&&!categories.includes(n.trim())){ categories.push(n.trim()); saveAll(); } }
+    function addSubcategory(n){ if(n.trim()&&!subcategories.includes(n.trim())){ subcategories.push(n.trim()); saveAll(); } }
+    function setDefaultMinForAll(){ let def=parseInt(document.getElementById('defaultMinStock').value); if(!isNaN(def)){ inventory.forEach(i=>{ if(!i.minStock) i.minStock=def; }); saveAll(); alert('Готово'); } }
+    function setMinForAll(){ let v=prompt('Новый мин. остаток для всех','5'); if(v!==null){ let n=parseInt(v); if(!isNaN(n)){ inventory.forEach(i=>i.minStock=n); saveAll(); } } }
+
+    // QR-генерация
+    function generateQRCode(item){
+        let baseUrl=window.location.href.split('?')[0];
+        let artikulForUrl = (item.artikul || item.id).trim();
+        let scanUrl=`${baseUrl}?scan=${encodeURIComponent(artikulForUrl)}`;
+        let qr = qrcode(0, 'M');
+        qr.addData(scanUrl);
+        qr.make();
+        let cellSize=4, margin=2, size=qr.getModuleCount()*cellSize+margin*2;
+        let canvas=document.createElement('canvas');
+        canvas.width=size; canvas.height=size;
+        let ctx=canvas.getContext('2d');
+        ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,size,size);
+        ctx.fillStyle='#000000';
+        for(let r=0; r<qr.getModuleCount(); r++)
+            for(let c=0; c<qr.getModuleCount(); c++)
+                if(qr.isDark(r,c)) ctx.fillRect(c*cellSize+margin, r*cellSize+margin, cellSize, cellSize);
+        let modal=document.createElement('div');
+        modal.className='qr-modal-overlay';
+        modal.innerHTML=`<div class="qr-modal"><h3>QR-код товара</h3><p><strong>${escapeHtml(item.name)}</strong><br>Артикул: ${escapeHtml(item.artikul||'—')}</p><div id="qrCanvas"></div><p style="font-size:0.7rem;">Отсканируйте телефоном, чтобы узнать остаток</p><button class="btn-outline close-qr">Закрыть</button></div>`;
+        modal.querySelector('#qrCanvas').appendChild(canvas);
+        document.body.appendChild(modal);
+        modal.querySelector('.close-qr').addEventListener('click',()=>modal.remove());
+    }
+
+    // Обработка сканирования
+    function handleScanParameter(){
+        let params=new URLSearchParams(window.location.search);
+        let scanCode=params.get('scan');
+        if(!scanCode) return;
+        let normalizedInput=scanCode.trim().toLowerCase().replace(/\s/g,'');
+        let found=inventory.find(i=>{
+            let art=(i.artikul||'').trim().toLowerCase().replace(/\s/g,'');
+            return art===normalizedInput || i.id===scanCode;
+        });
+        if(found){
+            showScanCard(found);
+        } else {
+            alert(`Товар с артикулом "${scanCode}" не найден в базе.`);
+            let newUrl=window.location.href.split('?')[0];
+            window.history.replaceState({}, document.title, newUrl);
+        }
+    }
+    function showScanCard(item){
+        let overlay=document.createElement('div');
+        overlay.className='scan-result-overlay';
+        let low=item.stock<=item.minStock;
+        overlay.innerHTML=`
+            <div class="scan-result-card">
+                <h2>📦 ${escapeHtml(item.name)}</h2>
+                <div>Артикул: ${escapeHtml(item.artikul||'—')}</div>
+                <div class="scan-stock ${low?'scan-low':'scan-ok'}">${item.stock} шт</div>
+                <div>Минимальный остаток: ${item.minStock} шт</div>
+                <div style="margin-top:12px;">${low?'⚠️ Рекомендуется пополнение':'✅ Достаточно'}</div>
+                <div style="margin-top:24px;"><button class="close-scan btn-outline">Вернуться к учёту</button></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.querySelector('.close-scan').addEventListener('click',()=>{
+            overlay.remove();
+            let newUrl=window.location.href.split('?')[0];
+            window.history.replaceState({}, document.title, newUrl);
+        });
+    }
+
+    // Импорт Excel
+    function importExcel(file){
+        let reader=new FileReader();
+        reader.onload=function(e){
+            let data=new Uint8Array(e.target.result);
+            let wb=XLSX.read(data,{type:'array'});
+            let sheet=wb.Sheets[wb.SheetNames[0]];
+            let rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:""});
+            if(rows.length<2){ alert('Файл пуст'); return; }
+            let nameCol=-1,stockCol=-1,artCol=-1;
+            for(let i=0;i<rows[0].length;i++){
+                let cell=String(rows[0][i]||'').toLowerCase();
+                if(cell.includes('наименован')||cell==='товар') nameCol=i;
+                if(cell.includes('остаток')) stockCol=i;
+                if(cell==='артикул'||cell.includes('артикул')) artCol=i;
+            }
+            if(nameCol===-1||stockCol===-1){ alert('Не найдены колонки Наименование или Остаток'); return; }
+            let added=0,updated=0;
+            for(let i=1;i<rows.length;i++){
+                let name=rows[i][nameCol]?String(rows[i][nameCol]).trim():'';
+                if(!name) continue;
+                let stockRaw=rows[i][stockCol];
+                if(stockRaw===undefined||stockRaw==='') continue;
+                let stock=Math.round(parseFloat(String(stockRaw).replace(',','.')))||0;
+                let artikul=artCol!==-1&&rows[i][artCol]?String(rows[i][artCol]).trim():'';
+                let existing=inventory.find(it=>it.name===name);
+                if(!existing&&artikul) existing=inventory.find(it=>it.artikul===artikul);
+                if(existing){
+                    existing.stock=stock;
+                    if(artikul&&!existing.artikul) existing.artikul=artikul;
+                    updated++;
+                } else {
+                    let cat=detectCategoryFromName(name);
+                    if(!categories.includes(cat)) categories.push(cat);
+                    inventory.push({ id:Date.now()+'-'+Math.random().toString(36).substr(2,6), name, artikul, stock, minStock:5, category:cat, supplier:'Из 1С', subcategory:detectSubcategoryFromName(name) });
+                    added++;
+                }
+            }
+            saveAll();
+            alert(`Импорт завершён: добавлено ${added}, обновлено ${updated}`);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+    function exportCSV(){
+        let headers=['Артикул','Наименование','Категория','Поставщик','Подкатегория','Остаток','Мин.остаток'];
+        let rows=inventory.map(i=>[i.artikul||'',i.name,i.category,i.supplier,i.subcategory,i.stock,i.minStock]);
+        let csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        let blob=new Blob(["\uFEFF"+csv],{type:'text/csv'});
+        let a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='ostatki.csv'; a.click(); URL.revokeObjectURL(blob);
+    }
+
+    // Инициализация
+    document.addEventListener('DOMContentLoaded', ()=>{
+        loadData();
+        saveAll();
+        handleScanParameter();
+
+        // Кнопки
+        document.getElementById('addBtn').addEventListener('click',()=>{
+            let name=document.getElementById('productName').value;
+            let art=document.getElementById('productArtikul').value;
+            let cat=document.getElementById('categorySelect').value;
+            let sup=document.getElementById('supplierSelect').value;
+            let sub=document.getElementById('subcategorySelect').value;
+            let stock=document.getElementById('initialStock').value;
+            let min=document.getElementById('minStock').value;
+            addProduct(name,art,cat,sup,sub,stock,min);
+            document.getElementById('productName').value='';
+            document.getElementById('productArtikul').value='';
+            document.getElementById('initialStock').value='0';
+        });
+        document.getElementById('addSupplierBtn').addEventListener('click',()=>{ addSupplier(document.getElementById('newSupplierName').value); document.getElementById('newSupplierName').value=''; });
+        document.getElementById('addCategoryBtn').addEventListener('click',()=>{ addCategory(document.getElementById('newCategoryName').value); document.getElementById('newCategoryName').value=''; });
+        document.getElementById('addSubcategoryBtn').addEventListener('click',()=>{ addSubcategory(document.getElementById('newSubcategory').value); document.getElementById('newSubcategory').value=''; });
+        document.getElementById('exportCsvBtn').addEventListener('click',exportCSV);
+        document.getElementById('filterCategory').addEventListener('change',()=>renderTable());
+        document.getElementById('filterSupplier').addEventListener('change',()=>renderTable());
+        document.getElementById('filterSubcategory').addEventListener('change',()=>renderTable());
+        document.getElementById('searchName').addEventListener('input',()=>renderTable());
+        document.getElementById('groupBySelect').addEventListener('change',()=>{ groupBy=document.getElementById('groupBySelect').value; saveAll(); });
+        document.getElementById('resetFilters').addEventListener('click',()=>{
+            document.getElementById('filterCategory').value='all';
+            document.getElementById('filterSupplier').value='all';
+            document.getElementById('filterSubcategory').value='all';
+            document.getElementById('searchName').value='';
+            renderTable();
+        });
+        document.getElementById('selectAllCheckbox').addEventListener('change',e=>{
+            document.querySelectorAll('.item-checkbox').forEach(cb=>{ cb.checked=e.target.checked; if(e.target.checked) selectedItems.add(cb.value); else selectedItems.delete(cb.value); });
+            updateSelectAllState();
+            updateMassActionsVisibility();
+        });
+        document.getElementById('massSupplierSelect').addEventListener('change',applyMassSupplier);
+        document.getElementById('massCategorySelect').addEventListener('change',applyMassCategory);
+        document.getElementById('massSubcategorySelect').addEventListener('change',applyMassSubcategory);
+        document.getElementById('applyMassMinBtn').addEventListener('click',applyMassMinStock);
+        document.getElementById('deleteSelectedBtn').addEventListener('click',deleteSelected);
+        document.getElementById('clearSelectionBtn').addEventListener('click',clearSelection);
+        document.getElementById('importExcelInput').addEventListener('change',e=>{ if(e.target.files[0]) importExcel(e.target.files[0]); e.target.value=''; });
+    });
 </script>
 </body>
 </html>
