@@ -2013,6 +2013,18 @@ function importExcel(file) {
         if (entry.artikul) metaParts.push(`арт. ${escapeHtml(entry.artikul)}`);
         if (hasDeficitInfo) metaParts.push(`<span class="${stock <= minStock ? 'deficit-tag' : ''}">остаток ${stock} / мин. ${minStock}</span>`);
         if (entry.manual) metaParts.push('вручную');
+        if (isLive) {
+            const incomingForItem = (typeof deliveries !== 'undefined' ? deliveries : [])
+                .filter(d => d.itemId === entry.itemId && d.status !== 'received')
+                .sort((a,b) => (a.date||'9999').localeCompare(b.date||'9999'));
+            if (incomingForItem.length) {
+                const totalIncoming = incomingForItem.reduce((s,d) => s + (d.qty||0), 0);
+                const nearest = incomingForItem[0];
+                const dateText = nearest.date ? formatDateRu(nearest.date) : 'дата неизв.';
+                const statusText = nearest.status === 'transit' ? 'в пути' : 'ожидается';
+                metaParts.push(`<span style="color:#1e40af; font-weight:600;">🚚 едет ${totalIncoming} шт (${statusText}, ${dateText})</span>`);
+            }
+        }
         const supplierOptions = suppliers.map(s => `<option value="${escapeHtml(s)}" ${s === entry.supplier ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
         const supplierOptionsWithCustom = (entry.supplier && !suppliers.includes(entry.supplier))
             ? `<option value="${escapeHtml(entry.supplier)}" selected>${escapeHtml(entry.supplier)}</option>` + supplierOptions
@@ -2148,7 +2160,19 @@ function importExcel(file) {
             let supplierTotalQty = 0;
             entries.forEach((entry, idx) => {
                 const artikulPart = entry.artikul ? ` (арт. ${entry.artikul})` : '';
-                lines.push(`${idx + 1}. ${entry.name}${artikulPart} — ${entry.qty} шт.`);
+                let incomingPart = '';
+                if (entry.itemId) {
+                    const incomingForItem = deliveries
+                        .filter(d => d.itemId === entry.itemId && d.status !== 'received')
+                        .sort((a,b) => (a.date||'9999').localeCompare(b.date||'9999'));
+                    if (incomingForItem.length) {
+                        const totalIncoming = incomingForItem.reduce((s,d) => s + (d.qty||0), 0);
+                        const nearest = incomingForItem[0];
+                        const dateText = nearest.date ? formatDateRu(nearest.date) : 'дата не указана';
+                        incomingPart = ` [уже едет ${totalIncoming} шт, ближайшая ${dateText}]`;
+                    }
+                }
+                lines.push(`${idx + 1}. ${entry.name}${artikulPart} — ${entry.qty} шт.${incomingPart}`);
                 supplierTotalQty += entry.qty || 0;
             });
             lines.push('-'.repeat(60));
