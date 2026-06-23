@@ -165,6 +165,52 @@
         .scan-low { color: #dc2626; background: #fee2e2; display: inline-block; padding: 8px 24px; border-radius: 60px; }
         .scan-ok { color: #16a34a; background: #dcfce7; display: inline-block; padding: 8px 24px; border-radius: 60px; }
         .close-scan { margin-top: 30px; }
+
+        /* ---------- Стили для блока "Список закупок" ---------- */
+        .purchase-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px; }
+        .purchase-toolbar .spacer { flex:1; }
+        .purchase-group { background:white; border:1px solid #e2e8f0; border-radius:18px; margin-bottom:14px; overflow:hidden; }
+        .purchase-group-header { display:flex; align-items:center; gap:10px; padding:12px 16px; background:#f8fafc; cursor:pointer; user-select:none; }
+        .purchase-group-header:hover { background:#f1f5f9; }
+        .purchase-group-toggle { font-size:0.65rem; color:#94a3b8; transition:transform .2s; flex-shrink:0; }
+        .purchase-group.open .purchase-group-toggle { transform:rotate(90deg); }
+        .purchase-group-title { font-weight:700; font-size:0.95rem; color:#1e293b; flex:1; }
+        .purchase-group-count { font-size:0.75rem; color:#94a3b8; font-weight:600; background:#e2e8f0; padding:2px 10px; border-radius:20px; }
+        .purchase-group-body { display:none; padding:6px 16px 14px; }
+        .purchase-group.open .purchase-group-body { display:block; }
+        .purchase-row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid #f1f5f9; }
+        .purchase-row:last-child { border-bottom:none; }
+        .purchase-row-name { flex:1; min-width:0; }
+        .purchase-row-title { font-weight:600; font-size:0.85rem; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .purchase-row-meta { font-size:0.7rem; color:#94a3b8; margin-top:1px; }
+        .purchase-row-meta .deficit-tag { color:#ef4444; font-weight:600; }
+        .purchase-qty-input { width:70px; padding:5px 8px; border:1px solid #cbd5e1; border-radius:10px; font-size:0.85rem; text-align:center; font-weight:700; }
+        .purchase-qty-input.is-edited { border-color:#f97316; background:#fff7ed; }
+        .purchase-row-supplier-select { padding:4px 8px; border:1px solid #cbd5e1; border-radius:10px; font-size:0.75rem; background:white; max-width:130px; }
+        .purchase-row-remove { background:none; border:none; color:#cbd5e1; font-size:1rem; cursor:pointer; padding:2px 6px; flex-shrink:0; }
+        .purchase-row-remove:hover { color:#ef4444; }
+        .purchase-empty { text-align:center; color:#94a3b8; font-size:0.85rem; padding:30px 10px; }
+        .purchase-summary { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+        .purchase-summary-chip { background:#fff7ed; border:1px solid #fed7aa; border-radius:30px; padding:6px 16px; font-size:0.8rem; color:#9a3412; font-weight:600; }
+        .purchase-modal-overlay {
+            position: fixed; top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center;
+            z-index: 1200; padding:20px;
+        }
+        .purchase-modal {
+            background:white; border-radius:24px; padding:22px 24px; max-width:560px; width:100%;
+            max-height:80vh; overflow-y:auto; box-shadow:0 20px 35px rgba(0,0,0,0.3);
+        }
+        .purchase-modal h3 { margin:0 0 12px; }
+        .purchase-modal textarea { width:100%; min-height:300px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:0.8rem; padding:12px; border:1px solid #cbd5e1; border-radius:14px; resize:vertical; white-space:pre; }
+        .purchase-modal .modal-actions { display:flex; gap:10px; margin-top:14px; justify-content:flex-end; flex-wrap:wrap; }
+        @media (max-width: 640px) {
+            .purchase-row { flex-wrap:wrap; }
+            .purchase-row-supplier-select { max-width:none; flex:1; }
+            .purchase-qty-input { width:60px; }
+            .purchase-toolbar { flex-direction:column; align-items:stretch; }
+            .purchase-toolbar button, .purchase-toolbar label { width:100%; text-align:center; }
+        }
     </style>
 </head>
 <body>
@@ -283,6 +329,43 @@
         </div>
     </div>
 </div>
+
+    <!-- ===================== СПИСОК ЗАКУПОК ===================== -->
+    <div id="purchaseSectionWrapper" style="margin-bottom:28px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div>
+                <h2 style="margin:0; font-size:1.2rem; color:#1e293b;">🛒 Список закупок</h2>
+                <div style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">Товары с остатком ≤ мин. порога, сгруппированы по поставщику. Можно редактировать количество и поставщика перед выгрузкой.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="purchaseAutoFillBtn">⚡ Заполнить из дефицита</button>
+                <button class="btn-outline" id="purchaseAddItemBtn">➕ Добавить товар вручную</button>
+            </div>
+        </div>
+
+        <div class="purchase-summary" id="purchaseSummary"></div>
+
+        <div class="purchase-toolbar">
+            <label style="font-size:0.78rem; color:#475569;">Группировка:</label>
+            <select id="purchaseGroupBy">
+                <option value="supplier">По поставщику</option>
+                <option value="category">По категории</option>
+                <option value="none">Без группировки</option>
+            </select>
+            <div class="spacer"></div>
+            <button class="btn-outline" id="purchaseExpandAllBtn">Развернуть все</button>
+            <button class="btn-outline" id="purchaseCollapseAllBtn">Свернуть все</button>
+            <button class="btn-outline" id="purchaseClearBtn">🗑 Очистить список</button>
+            <button id="purchaseExportTxtBtn">📄 Скачать TXT</button>
+            <button id="purchasePreviewBtn" class="btn-outline">👁 Предпросмотр</button>
+        </div>
+
+        <div id="purchaseListContainer"></div>
+        <div class="purchase-empty" id="purchaseEmpty" style="display:none;">
+            Список закупок пуст. Нажмите «Заполнить из дефицита», чтобы автоматически добавить товары с низким остатком, либо добавьте товар вручную.
+        </div>
+    </div>
+
     <!-- Синхронизация JSONBin -->
     <div id="syncPanel" style="margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -359,6 +442,7 @@
         <select id="massSubcategorySelect"><option value="">Изменить подкатегорию на...</option></select>
         <input type="number" id="massMinStock" placeholder="Мин. остаток" style="width: 100px;">
         <button id="applyMassMinBtn">Установить порог</button>
+        <button id="addToPurchaseListBtn" class="btn-outline">🛒 В список закупок</button>
         <button id="deleteSelectedBtn" style="background:#dc2626;">Удалить выбранные</button>
         <button id="clearSelectionBtn" class="btn-outline">Снять выделение</button>
     </div>
@@ -395,6 +479,12 @@
     let editingKitId = null;
     let selectedKitIds = new Set();
 
+    // ------------------- Список закупок -------------------
+    // Каждая позиция: { id, itemId (ссылка на товар, может быть null для ручных), name, artikul, supplier, category, qty, stock, minStock, manual }
+    let purchaseList = [];
+    let purchaseGroupBy = 'supplier';
+    let collapsedPurchaseGroups = new Set();
+
     // ═══════════════════════════════════════════════════════
     //  ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ — JSONBin.io (сокращённо, но рабочая)
     // ═══════════════════════════════════════════════════════
@@ -420,7 +510,7 @@
         if (!syncEnabled() || syncInProgress) return;
         syncInProgress = true;
         setSyncStatus('loading', 'Сохранение в облако…');
-        const payload = { inventory, suppliers, categories, subcategories, kits, groupBy };
+        const payload = { inventory, suppliers, categories, subcategories, kits, groupBy, purchaseList, purchaseGroupBy };
         try {
             const res = await fetch(`${JSONBIN_BASE}/${syncBinId}`, {
                 method: 'PUT',
@@ -448,12 +538,16 @@
             if (Array.isArray(data.subcategories)) subcategories = data.subcategories;
             if (Array.isArray(data.kits)) kits = data.kits;
             if (data.groupBy) groupBy = data.groupBy;
+            if (Array.isArray(data.purchaseList)) purchaseList = data.purchaseList;
+            if (data.purchaseGroupBy) purchaseGroupBy = data.purchaseGroupBy;
             localStorage.setItem('inventory', JSON.stringify(inventory));
             localStorage.setItem('suppliers', JSON.stringify(suppliers));
             localStorage.setItem('categories', JSON.stringify(categories));
             localStorage.setItem('subcategories', JSON.stringify(subcategories));
             localStorage.setItem('kits', JSON.stringify(kits));
             localStorage.setItem('groupBy', groupBy);
+            localStorage.setItem('purchaseList', JSON.stringify(purchaseList));
+            localStorage.setItem('purchaseGroupBy', purchaseGroupBy);
             setSyncStatus('ok', 'Загружено из облака · ' + new Date().toLocaleTimeString());
             return true;
         } catch(e) { setSyncStatus('error', 'Ошибка загрузки: ' + e.message); return false; }
@@ -500,6 +594,12 @@
         if (storedCollapsed) collapsedGroups = new Set(JSON.parse(storedCollapsed));
         const storedKits = localStorage.getItem('kits');
         if (storedKits) try { kits = JSON.parse(storedKits); } catch(e) { kits = []; }
+        const storedPurchaseList = localStorage.getItem('purchaseList');
+        if (storedPurchaseList) try { purchaseList = JSON.parse(storedPurchaseList); } catch(e) { purchaseList = []; }
+        const storedPurchaseGroupBy = localStorage.getItem('purchaseGroupBy');
+        if (storedPurchaseGroupBy) purchaseGroupBy = storedPurchaseGroupBy;
+        const storedCollapsedPurchase = localStorage.getItem('collapsedPurchaseGroups');
+        if (storedCollapsedPurchase) try { collapsedPurchaseGroups = new Set(JSON.parse(storedCollapsedPurchase)); } catch(e) {}
         if (syncEnabled()) await pullFromCloud();
         else setSyncStatus('off', 'Синхронизация не настроена');
     }
@@ -512,9 +612,13 @@
         localStorage.setItem('groupBy', groupBy);
         localStorage.setItem('collapsedGroups', JSON.stringify([...collapsedGroups]));
         localStorage.setItem('kits', JSON.stringify(kits));
+        localStorage.setItem('purchaseList', JSON.stringify(purchaseList));
+        localStorage.setItem('purchaseGroupBy', purchaseGroupBy);
+        localStorage.setItem('collapsedPurchaseGroups', JSON.stringify([...collapsedPurchaseGroups]));
         renderFilters();
         renderTable();
         renderKits();
+        renderPurchaseList();
         updateWarningPanel();
         updateMassActionsVisibility();
         schedulePush();
@@ -1599,6 +1703,351 @@ function importExcel(file) {
         updateKitSelectionUI();
     }
 
+    // ========================================================
+    //  СПИСОК ЗАКУПОК
+    // ========================================================
+
+    // Рекомендуемое количество к заказу: до удвоенного мин.остатка (минимум разница до min + небольшой запас),
+    // но не меньше 1, если позиция вообще попала в дефицит.
+    function suggestedPurchaseQty(item) {
+        const deficit = item.minStock - item.stock;
+        if (deficit > 0) return deficit;
+        return 1;
+    }
+
+    function findPurchaseEntryByItemId(itemId) {
+        return purchaseList.find(p => p.itemId === itemId);
+    }
+
+    function addItemToPurchaseList(item, qtyOverride) {
+        const existing = findPurchaseEntryByItemId(item.id);
+        if (existing) {
+            if (qtyOverride !== undefined) existing.qty = qtyOverride;
+            existing.stock = item.stock;
+            existing.minStock = item.minStock;
+            existing.supplier = existing.supplier || item.supplier;
+            existing.category = item.category;
+            existing.name = item.name;
+            existing.artikul = item.artikul;
+            return existing;
+        }
+        const entry = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+            itemId: item.id,
+            name: item.name,
+            artikul: item.artikul || '',
+            supplier: item.supplier || 'Другой',
+            category: item.category || 'Прочее',
+            qty: qtyOverride !== undefined ? qtyOverride : suggestedPurchaseQty(item),
+            stock: item.stock,
+            minStock: item.minStock,
+            manual: false
+        };
+        purchaseList.push(entry);
+        return entry;
+    }
+
+    function autoFillPurchaseListFromDeficit() {
+        const lowItems = inventory.filter(i => i.stock <= i.minStock);
+        if (lowItems.length === 0) { alert('Нет товаров с дефицитом (остаток ≤ мин. порога).'); return; }
+        let addedCount = 0;
+        lowItems.forEach(item => {
+            const existing = findPurchaseEntryByItemId(item.id);
+            if (!existing) { addItemToPurchaseList(item); addedCount++; }
+        });
+        saveAll();
+        if (addedCount > 0) alert(`Добавлено в список закупок: ${addedCount} товар(ов).`);
+        else alert('Все дефицитные товары уже есть в списке закупок.');
+    }
+
+    function addSelectedInventoryToPurchaseList() {
+        if (selectedItems.size === 0) { alert('Сначала выберите товары в таблице (галочки слева).'); return; }
+        let added = 0;
+        for (const id of selectedItems) {
+            const item = inventory.find(i => i.id === id);
+            if (!item) continue;
+            const existing = findPurchaseEntryByItemId(item.id);
+            if (!existing) { addItemToPurchaseList(item); added++; }
+        }
+        saveAll();
+        alert(`Добавлено в список закупок: ${added} товар(ов).`);
+    }
+
+    function openManualPurchaseAddDialog() {
+        const name = prompt('Название товара для закупки:');
+        if (!name || !name.trim()) return;
+        const artikul = prompt('Артикул (необязательно):', '') || '';
+        let supplier = prompt('Поставщик:', suppliers[0] || 'Другой') || 'Другой';
+        const qtyRaw = prompt('Количество к заказу:', '1');
+        const qty = parseInt(qtyRaw, 10);
+        purchaseList.push({
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+            itemId: null,
+            name: name.trim(),
+            artikul: artikul.trim(),
+            supplier: supplier.trim() || 'Другой',
+            category: '',
+            qty: (isNaN(qty) || qty < 1) ? 1 : qty,
+            stock: null,
+            minStock: null,
+            manual: true
+        });
+        saveAll();
+    }
+
+    function updatePurchaseQty(id, newQty) {
+        const entry = purchaseList.find(p => p.id === id);
+        if (!entry) return;
+        const q = parseInt(newQty, 10);
+        entry.qty = (isNaN(q) || q < 0) ? 0 : q;
+        saveAll();
+    }
+
+    function updatePurchaseSupplier(id, newSupplier) {
+        const entry = purchaseList.find(p => p.id === id);
+        if (!entry) return;
+        entry.supplier = newSupplier;
+        saveAll();
+    }
+
+    function removeFromPurchaseList(id) {
+        purchaseList = purchaseList.filter(p => p.id !== id);
+        saveAll();
+    }
+
+    function clearPurchaseList() {
+        if (purchaseList.length === 0) return;
+        if (confirm('Очистить весь список закупок?')) {
+            purchaseList = [];
+            saveAll();
+        }
+    }
+
+    function getPurchaseGroupKey(entry) {
+        if (purchaseGroupBy === 'supplier') return entry.supplier || '(без поставщика)';
+        if (purchaseGroupBy === 'category') return entry.category || '(без категории)';
+        return 'all';
+    }
+
+    function renderPurchaseSummary() {
+        const el = document.getElementById('purchaseSummary');
+        if (!el) return;
+        if (purchaseList.length === 0) { el.innerHTML = ''; return; }
+        const totalPositions = purchaseList.length;
+        const totalQty = purchaseList.reduce((s, p) => s + (p.qty || 0), 0);
+        const supplierCount = new Set(purchaseList.map(p => p.supplier || '(без поставщика)')).size;
+        el.innerHTML = `
+            <span class="purchase-summary-chip">📦 Позиций: ${totalPositions}</span>
+            <span class="purchase-summary-chip">🔢 Общее количество: ${totalQty}</span>
+            <span class="purchase-summary-chip">🏭 Поставщиков: ${supplierCount}</span>
+        `;
+    }
+
+    function buildPurchaseRow(entry) {
+        const isLive = !!entry.itemId;
+        const currentItem = isLive ? inventory.find(i => i.id === entry.itemId) : null;
+        const stock = currentItem ? currentItem.stock : entry.stock;
+        const minStock = currentItem ? currentItem.minStock : entry.minStock;
+        const hasDeficitInfo = stock !== null && stock !== undefined && minStock !== null && minStock !== undefined;
+        const metaParts = [];
+        if (entry.artikul) metaParts.push(`арт. ${escapeHtml(entry.artikul)}`);
+        if (hasDeficitInfo) metaParts.push(`<span class="${stock <= minStock ? 'deficit-tag' : ''}">остаток ${stock} / мин. ${minStock}</span>`);
+        if (entry.manual) metaParts.push('вручную');
+        const supplierOptions = suppliers.map(s => `<option value="${escapeHtml(s)}" ${s === entry.supplier ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+        const supplierOptionsWithCustom = (entry.supplier && !suppliers.includes(entry.supplier))
+            ? `<option value="${escapeHtml(entry.supplier)}" selected>${escapeHtml(entry.supplier)}</option>` + supplierOptions
+            : supplierOptions;
+        return `<div class="purchase-row" data-purchase-id="${entry.id}">
+            <div class="purchase-row-name">
+                <div class="purchase-row-title">${escapeHtml(entry.name)}</div>
+                <div class="purchase-row-meta">${metaParts.join(' · ')}</div>
+            </div>
+            <select class="purchase-row-supplier-select" data-id="${entry.id}" title="Поставщик">${supplierOptionsWithCustom}</select>
+            <input type="number" class="purchase-qty-input" data-id="${entry.id}" value="${entry.qty}" min="0" title="Количество к заказу">
+            <button class="purchase-row-remove" data-id="${entry.id}" title="Убрать из списка">✖</button>
+        </div>`;
+    }
+
+    function renderPurchaseList() {
+        const container = document.getElementById('purchaseListContainer');
+        const empty = document.getElementById('purchaseEmpty');
+        if (!container || !empty) return;
+
+        renderPurchaseSummary();
+
+        if (purchaseList.length === 0) {
+            container.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+        empty.style.display = 'none';
+
+        if (purchaseGroupBy === 'none') {
+            container.innerHTML = `<div class="purchase-group open"><div class="purchase-group-body" style="display:block;">${purchaseList.map(buildPurchaseRow).join('')}</div></div>`;
+        } else {
+            const groups = new Map();
+            for (const entry of purchaseList) {
+                const key = getPurchaseGroupKey(entry);
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(entry);
+            }
+            const keys = [...groups.keys()].sort();
+            container.innerHTML = keys.map(key => {
+                const groupEntries = groups.get(key);
+                const isCollapsed = collapsedPurchaseGroups.has(key);
+                const totalQty = groupEntries.reduce((s, e) => s + (e.qty || 0), 0);
+                return `<div class="purchase-group ${isCollapsed ? '' : 'open'}" data-group-key="${escapeHtml(key)}">
+                    <div class="purchase-group-header">
+                        <span class="purchase-group-toggle">▶</span>
+                        <span class="purchase-group-title">${escapeHtml(key)}</span>
+                        <span class="purchase-group-count">${groupEntries.length} поз. · ${totalQty} шт</span>
+                    </div>
+                    <div class="purchase-group-body" style="${isCollapsed ? '' : 'display:block;'}">
+                        ${groupEntries.map(buildPurchaseRow).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // обработчики сворачивания групп
+        container.querySelectorAll('.purchase-group-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const groupEl = header.closest('.purchase-group');
+                const key = groupEl.dataset.groupKey;
+                const body = groupEl.querySelector('.purchase-group-body');
+                const isOpen = groupEl.classList.contains('open');
+                if (isOpen) {
+                    groupEl.classList.remove('open');
+                    body.style.display = 'none';
+                    if (key !== undefined) collapsedPurchaseGroups.add(key);
+                } else {
+                    groupEl.classList.add('open');
+                    body.style.display = 'block';
+                    if (key !== undefined) collapsedPurchaseGroups.delete(key);
+                }
+                localStorage.setItem('collapsedPurchaseGroups', JSON.stringify([...collapsedPurchaseGroups]));
+            });
+        });
+
+        // обработчики количества
+        container.querySelectorAll('.purchase-qty-input').forEach(input => {
+            input.addEventListener('change', () => updatePurchaseQty(input.dataset.id, input.value));
+            input.addEventListener('click', e => e.stopPropagation());
+        });
+        // обработчики поставщика
+        container.querySelectorAll('.purchase-row-supplier-select').forEach(sel => {
+            sel.addEventListener('change', () => updatePurchaseSupplier(sel.dataset.id, sel.value));
+            sel.addEventListener('click', e => e.stopPropagation());
+        });
+        // обработчики удаления
+        container.querySelectorAll('.purchase-row-remove').forEach(btn => {
+            btn.addEventListener('click', e => { e.stopPropagation(); removeFromPurchaseList(btn.dataset.id); });
+        });
+    }
+
+    function expandAllPurchaseGroups() {
+        collapsedPurchaseGroups.clear();
+        localStorage.setItem('collapsedPurchaseGroups', JSON.stringify([]));
+        renderPurchaseList();
+    }
+    function collapseAllPurchaseGroups() {
+        const groups = new Map();
+        for (const entry of purchaseList) {
+            const key = getPurchaseGroupKey(entry);
+            groups.set(key, true);
+        }
+        collapsedPurchaseGroups = new Set(groups.keys());
+        localStorage.setItem('collapsedPurchaseGroups', JSON.stringify([...collapsedPurchaseGroups]));
+        renderPurchaseList();
+    }
+
+    // ---- Формирование текста TXT-файла ----
+    function buildPurchaseTxt() {
+        if (purchaseList.length === 0) return '';
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('ru-RU') + ' ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        let lines = [];
+        lines.push('СПИСОК ЗАКУПОК');
+        lines.push('Сформирован: ' + dateStr);
+        lines.push('='.repeat(60));
+        lines.push('');
+
+        const groups = new Map();
+        for (const entry of purchaseList) {
+            const key = entry.supplier || '(без поставщика)';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(entry);
+        }
+        const supplierNames = [...groups.keys()].sort();
+
+        let grandTotalQty = 0;
+        for (const supplierName of supplierNames) {
+            const entries = groups.get(supplierName);
+            lines.push(`ПОСТАВЩИК: ${supplierName}`);
+            lines.push('-'.repeat(60));
+            let supplierTotalQty = 0;
+            entries.forEach((entry, idx) => {
+                const artikulPart = entry.artikul ? ` (арт. ${entry.artikul})` : '';
+                lines.push(`${idx + 1}. ${entry.name}${artikulPart} — ${entry.qty} шт.`);
+                supplierTotalQty += entry.qty || 0;
+            });
+            lines.push('-'.repeat(60));
+            lines.push(`Итого по поставщику «${supplierName}»: ${entries.length} позиций, ${supplierTotalQty} шт.`);
+            lines.push('');
+            grandTotalQty += supplierTotalQty;
+        }
+
+        lines.push('='.repeat(60));
+        lines.push(`ВСЕГО: ${purchaseList.length} позиций, ${grandTotalQty} шт., ${supplierNames.length} поставщик(ов)`);
+        return lines.join('\n');
+    }
+
+    function exportPurchaseListTxt() {
+        if (purchaseList.length === 0) { alert('Список закупок пуст.'); return; }
+        const text = buildPurchaseTxt();
+        const blob = new Blob(["\uFEFF" + text], { type: 'text/plain;charset=utf-8;' });
+        const link = document.createElement('a');
+        const now = new Date();
+        const fname = `spisok_zakupok_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}.txt`;
+        link.href = URL.createObjectURL(blob);
+        link.download = fname;
+        link.click();
+        URL.revokeObjectURL(blob);
+    }
+
+    function previewPurchaseListTxt() {
+        if (purchaseList.length === 0) { alert('Список закупок пуст.'); return; }
+        const text = buildPurchaseTxt();
+        const modal = document.createElement('div');
+        modal.className = 'purchase-modal-overlay';
+        modal.innerHTML = `
+            <div class="purchase-modal">
+                <h3>👁 Предпросмотр списка закупок</h3>
+                <textarea readonly>${escapeHtml(text)}</textarea>
+                <div class="modal-actions">
+                    <button class="btn-outline close-purchase-preview">Закрыть</button>
+                    <button class="copy-purchase-preview">📋 Скопировать</button>
+                    <button class="download-purchase-preview">📄 Скачать TXT</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('.close-purchase-preview').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        modal.querySelector('.copy-purchase-preview').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(text);
+                alert('Список скопирован в буфер обмена!');
+            } catch(e) {
+                const ta = modal.querySelector('textarea');
+                ta.select();
+                document.execCommand('copy');
+                alert('Список скопирован в буфер обмена!');
+            }
+        });
+        modal.querySelector('.download-purchase-preview').addEventListener('click', () => { exportPurchaseListTxt(); });
+    }
+
     // ---------- ГЕНЕРАЦИЯ QR-кода для товара ----------
     function generateQRCode(item) {
         const baseUrl = window.location.href.split('?')[0];
@@ -1693,6 +2142,8 @@ function importExcel(file) {
         style.textContent = '@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }';
         document.head.appendChild(style);
         await loadData();
+        const purchaseGroupBySelect = document.getElementById('purchaseGroupBy');
+        if (purchaseGroupBySelect) purchaseGroupBySelect.value = purchaseGroupBy;
         saveAll();
         handleScanParameter(); // проверим параметр scan при загрузке
 
@@ -1791,6 +2242,7 @@ function importExcel(file) {
         on('massCategorySelect', 'change', applyMassCategory);
         on('massSubcategorySelect', 'change', applyMassSubcategory);
         on('applyMassMinBtn', 'click', applyMassMinStock);
+        on('addToPurchaseListBtn', 'click', addSelectedInventoryToPurchaseList);
         on('deleteSelectedBtn', 'click', deleteSelected);
         on('clearSelectionBtn', 'click', clearSelection);
         on('newKitBtn', 'click', () => openKitBuilder(null));
@@ -1807,6 +2259,17 @@ function importExcel(file) {
             const q = byId('kitSearch'); if (q) q.value = '';
             renderKits();
         });
+
+        // --- Список закупок: обработчики ---
+        on('purchaseAutoFillBtn', 'click', autoFillPurchaseListFromDeficit);
+        on('purchaseAddItemBtn', 'click', openManualPurchaseAddDialog);
+        on('purchaseGroupBy', 'change', () => { purchaseGroupBy = byId('purchaseGroupBy').value; collapsedPurchaseGroups.clear(); saveAll(); });
+        on('purchaseExpandAllBtn', 'click', expandAllPurchaseGroups);
+        on('purchaseCollapseAllBtn', 'click', collapseAllPurchaseGroups);
+        on('purchaseClearBtn', 'click', clearPurchaseList);
+        on('purchaseExportTxtBtn', 'click', exportPurchaseListTxt);
+        on('purchasePreviewBtn', 'click', previewPurchaseListTxt);
+
         const excelInput = byId('importExcelInput');
         if (excelInput) excelInput.addEventListener('change', e => { if (e.target.files[0]) importExcel(e.target.files[0]); excelInput.value = ''; });
         const csvInput = byId('importCsvInput');
