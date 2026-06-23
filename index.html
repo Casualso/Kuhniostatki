@@ -211,6 +211,49 @@
             .purchase-toolbar { flex-direction:column; align-items:stretch; }
             .purchase-toolbar button, .purchase-toolbar label { width:100%; text-align:center; }
         }
+
+        /* ---------- Стили для блока "Ближайшие поставки" ---------- */
+        .delivery-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px; }
+        .delivery-toolbar .spacer { flex:1; }
+        .delivery-summary { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+        .delivery-summary-chip { background:#eff6ff; border:1px solid #bfdbfe; border-radius:30px; padding:6px 16px; font-size:0.8rem; color:#1e40af; font-weight:600; }
+        .delivery-summary-chip.overdue { background:#fee2e2; border-color:#fecaca; color:#991b1b; }
+        .delivery-group { background:white; border:1px solid #e2e8f0; border-radius:18px; margin-bottom:14px; overflow:hidden; }
+        .delivery-group-header { display:flex; align-items:center; gap:10px; padding:12px 16px; background:#f8fafc; cursor:pointer; user-select:none; }
+        .delivery-group-header:hover { background:#f1f5f9; }
+        .delivery-group-toggle { font-size:0.65rem; color:#94a3b8; transition:transform .2s; flex-shrink:0; }
+        .delivery-group.open .delivery-group-toggle { transform:rotate(90deg); }
+        .delivery-group-title { font-weight:700; font-size:0.95rem; color:#1e293b; flex:1; display:flex; align-items:center; gap:8px; }
+        .delivery-group-count { font-size:0.75rem; color:#94a3b8; font-weight:600; background:#e2e8f0; padding:2px 10px; border-radius:20px; }
+        .delivery-group-body { display:none; padding:6px 16px 14px; }
+        .delivery-group.open .delivery-group-body { display:block; }
+        .delivery-status-pill { font-size:0.66rem; font-weight:700; border-radius:20px; padding:2px 9px; flex-shrink:0; white-space:nowrap; }
+        .delivery-status-pill.pending  { background:#fef9c3; color:#92400e; }
+        .delivery-status-pill.transit  { background:#dbeafe; color:#1e40af; }
+        .delivery-status-pill.received { background:#dcfce7; color:#16a34a; }
+        .delivery-status-pill.overdue  { background:#fee2e2; color:#dc2626; }
+        .delivery-row { display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; }
+        .delivery-row:last-child { border-bottom:none; }
+        .delivery-row-name { flex:1; min-width:160px; }
+        .delivery-row-title { font-weight:600; font-size:0.85rem; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .delivery-row-meta { font-size:0.7rem; color:#94a3b8; margin-top:1px; }
+        .delivery-row-meta .no-match-tag { color:#f97316; font-weight:600; }
+        .delivery-date-input { padding:5px 8px; border:1px solid #cbd5e1; border-radius:10px; font-size:0.78rem; }
+        .delivery-qty-input { width:64px; padding:5px 8px; border:1px solid #cbd5e1; border-radius:10px; font-size:0.85rem; text-align:center; font-weight:700; }
+        .delivery-status-select { padding:4px 8px; border:1px solid #cbd5e1; border-radius:10px; font-size:0.75rem; background:white; }
+        .delivery-supplier-tag { font-size:0.7rem; background:#f1f5f9; color:#64748b; border-radius:10px; padding:2px 9px; white-space:nowrap; flex-shrink:0; }
+        .delivery-row-remove { background:none; border:none; color:#cbd5e1; font-size:1rem; cursor:pointer; padding:2px 6px; flex-shrink:0; }
+        .delivery-row-remove:hover { color:#ef4444; }
+        .delivery-empty { text-align:center; color:#94a3b8; font-size:0.85rem; padding:30px 10px; }
+        .delivery-builder { background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:14px 18px; margin-bottom:16px; }
+        .delivery-builder h3 { margin:0 0 12px; font-size:0.95rem; }
+        .delivery-import-report { white-space:pre-wrap; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:0.78rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:12px 14px; max-height:300px; overflow-y:auto; margin-top:10px; }
+        @media (max-width: 640px) {
+            .delivery-row { flex-direction:column; align-items:stretch; }
+            .delivery-toolbar { flex-direction:column; align-items:stretch; }
+            .delivery-toolbar button, .delivery-toolbar label { width:100%; text-align:center; }
+            .delivery-status-select, .delivery-date-input, .delivery-qty-input { width:100%; }
+        }
     </style>
 </head>
 <body>
@@ -366,6 +409,82 @@
         </div>
     </div>
 
+    <!-- ===================== БЛИЖАЙШИЕ ПОСТАВКИ ===================== -->
+    <div id="deliverySectionWrapper" style="margin-bottom:28px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div>
+                <h2 style="margin:0; font-size:1.2rem; color:#1e293b;">🚚 Ближайшие поставки</h2>
+                <div style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">Что едет, сколько и когда. При получении — остаток в карточке товара пополняется автоматически.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="newDeliveryBtn">➕ Добавить позицию</button>
+                <label for="importDeliveryFileInput" class="btn-outline" style="cursor:pointer;">📊 Импорт из Excel/CSV (УПД)</label>
+                <input type="file" id="importDeliveryFileInput" accept=".xlsx,.xls,.csv" style="display:none;">
+            </div>
+        </div>
+
+        <details style="margin-bottom:12px;">
+            <summary style="font-size:0.72rem;color:#94a3b8;cursor:pointer;">📄 Как импортировать УПД / накладную из Excel или CSV</summary>
+            <div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;font-size:0.75rem;color:#475569;line-height:1.8;">
+                Загрузите файл УПД/накладной как обычный Excel или CSV. Система сама найдёт колонки <strong>«Наименование»</strong>, <strong>«Артикул»</strong> и <strong>«Количество»</strong> (ищет похожие заголовки: «кол-во», «количество», «номенклатура» и т.п.).<br><br>
+                Сопоставление с товарами идёт по артикулу, затем по точному названию. Если позиция не найдена в базе остатков — для неё автоматически создастся новая карточка товара (с остатком 0), чтобы при получении поставки остаток корректно пополнился.<br><br>
+                После загрузки укажите дату поставки и поставщика — они применяются сразу ко всем позициям файла, дальше можно поправить по отдельности.
+            </div>
+        </details>
+
+        <div class="delivery-builder" id="deliveryBuilder" style="display:none;">
+            <h3 id="deliveryBuilderTitle">Новая поставка</h3>
+            <div class="form-row" style="margin-bottom:12px;">
+                <div class="form-group"><label>Товар</label><select id="deliveryItemSelect"></select></div>
+                <div class="form-group"><label>Поставщик</label><select id="deliverySupplierInput"></select></div>
+                <div class="form-group"><label>Количество</label><input type="number" id="deliveryQtyInput" value="1" min="1"></div>
+                <div class="form-group"><label>Ожидаемая дата</label><input type="date" id="deliveryDateInput"></div>
+                <div class="form-group"><label>Статус</label>
+                    <select id="deliveryStatusInput">
+                        <option value="pending">Ожидается</option>
+                        <option value="transit">В пути</option>
+                        <option value="received">Получено</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row" style="margin-bottom:14px;">
+                <div class="form-group"><label>Заметка</label><input type="text" id="deliveryNoteInput" placeholder="Номер УПД, комментарий..."></div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button id="saveDeliveryBtn">💾 Сохранить</button>
+                <button class="btn-outline" id="cancelDeliveryBtn">Отмена</button>
+            </div>
+        </div>
+
+        <div class="delivery-summary" id="deliverySummary"></div>
+
+        <div class="delivery-toolbar">
+            <label style="font-size:0.78rem; color:#475569;">Группировка:</label>
+            <select id="deliveryGroupBy">
+                <option value="date">По дате</option>
+                <option value="supplier">По поставщику</option>
+                <option value="status">По статусу</option>
+                <option value="none">Без группировки</option>
+            </select>
+            <label style="font-size:0.78rem; color:#475569;">Статус:</label>
+            <select id="deliveryFilterStatus">
+                <option value="all">Все</option>
+                <option value="pending">Ожидается</option>
+                <option value="transit">В пути</option>
+                <option value="received">Получено</option>
+            </select>
+            <div class="spacer"></div>
+            <button class="btn-outline" id="deliveryExpandAllBtn">Развернуть все</button>
+            <button class="btn-outline" id="deliveryCollapseAllBtn">Свернуть все</button>
+            <button class="btn-outline" id="deliveryClearReceivedBtn">🗑 Убрать полученные</button>
+        </div>
+
+        <div id="deliveryListContainer"></div>
+        <div class="delivery-empty" id="deliveryEmpty" style="display:none;">
+            Поставок пока нет. Добавьте позицию вручную или загрузите файл УПД/накладной.
+        </div>
+    </div>
+
     <!-- Синхронизация JSONBin -->
     <div id="syncPanel" style="margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -485,6 +604,13 @@
     let purchaseGroupBy = 'supplier';
     let collapsedPurchaseGroups = new Set();
 
+    // ------------------- Ближайшие поставки -------------------
+    // Каждая позиция: { id, itemId (ссылка на товар, null если не привязан), name, artikul, supplier, qty, date ('YYYY-MM-DD' или ''), status ('pending'|'transit'|'received'), note, importBatch }
+    let deliveries = [];
+    let deliveryGroupBy = 'date';
+    let collapsedDeliveryGroups = new Set();
+    let editingDeliveryId = null;
+
     // ═══════════════════════════════════════════════════════
     //  ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ — JSONBin.io (сокращённо, но рабочая)
     // ═══════════════════════════════════════════════════════
@@ -510,7 +636,7 @@
         if (!syncEnabled() || syncInProgress) return;
         syncInProgress = true;
         setSyncStatus('loading', 'Сохранение в облако…');
-        const payload = { inventory, suppliers, categories, subcategories, kits, groupBy, purchaseList, purchaseGroupBy };
+        const payload = { inventory, suppliers, categories, subcategories, kits, groupBy, purchaseList, purchaseGroupBy, deliveries, deliveryGroupBy };
         try {
             const res = await fetch(`${JSONBIN_BASE}/${syncBinId}`, {
                 method: 'PUT',
@@ -540,6 +666,8 @@
             if (data.groupBy) groupBy = data.groupBy;
             if (Array.isArray(data.purchaseList)) purchaseList = data.purchaseList;
             if (data.purchaseGroupBy) purchaseGroupBy = data.purchaseGroupBy;
+            if (Array.isArray(data.deliveries)) deliveries = data.deliveries;
+            if (data.deliveryGroupBy) deliveryGroupBy = data.deliveryGroupBy;
             localStorage.setItem('inventory', JSON.stringify(inventory));
             localStorage.setItem('suppliers', JSON.stringify(suppliers));
             localStorage.setItem('categories', JSON.stringify(categories));
@@ -548,6 +676,8 @@
             localStorage.setItem('groupBy', groupBy);
             localStorage.setItem('purchaseList', JSON.stringify(purchaseList));
             localStorage.setItem('purchaseGroupBy', purchaseGroupBy);
+            localStorage.setItem('deliveries', JSON.stringify(deliveries));
+            localStorage.setItem('deliveryGroupBy', deliveryGroupBy);
             setSyncStatus('ok', 'Загружено из облака · ' + new Date().toLocaleTimeString());
             return true;
         } catch(e) { setSyncStatus('error', 'Ошибка загрузки: ' + e.message); return false; }
@@ -600,6 +730,12 @@
         if (storedPurchaseGroupBy) purchaseGroupBy = storedPurchaseGroupBy;
         const storedCollapsedPurchase = localStorage.getItem('collapsedPurchaseGroups');
         if (storedCollapsedPurchase) try { collapsedPurchaseGroups = new Set(JSON.parse(storedCollapsedPurchase)); } catch(e) {}
+        const storedDeliveries = localStorage.getItem('deliveries');
+        if (storedDeliveries) try { deliveries = JSON.parse(storedDeliveries); } catch(e) { deliveries = []; }
+        const storedDeliveryGroupBy = localStorage.getItem('deliveryGroupBy');
+        if (storedDeliveryGroupBy) deliveryGroupBy = storedDeliveryGroupBy;
+        const storedCollapsedDelivery = localStorage.getItem('collapsedDeliveryGroups');
+        if (storedCollapsedDelivery) try { collapsedDeliveryGroups = new Set(JSON.parse(storedCollapsedDelivery)); } catch(e) {}
         if (syncEnabled()) await pullFromCloud();
         else setSyncStatus('off', 'Синхронизация не настроена');
     }
@@ -615,10 +751,14 @@
         localStorage.setItem('purchaseList', JSON.stringify(purchaseList));
         localStorage.setItem('purchaseGroupBy', purchaseGroupBy);
         localStorage.setItem('collapsedPurchaseGroups', JSON.stringify([...collapsedPurchaseGroups]));
+        localStorage.setItem('deliveries', JSON.stringify(deliveries));
+        localStorage.setItem('deliveryGroupBy', deliveryGroupBy);
+        localStorage.setItem('collapsedDeliveryGroups', JSON.stringify([...collapsedDeliveryGroups]));
         renderFilters();
         renderTable();
         renderKits();
         renderPurchaseList();
+        renderDeliveries();
         updateWarningPanel();
         updateMassActionsVisibility();
         schedulePush();
@@ -1347,6 +1487,14 @@ function importExcel(file) {
         const lowClass = (item.stock <= item.minStock) ? 'low-stock' : '';
         const isChecked = selectedItems.has(item.id) ? 'checked' : '';
         const checkboxHtml = withCheckbox ? `<td class="checkbox-col"><input type="checkbox" class="item-checkbox" value="${item.id}" ${isChecked}></td>` : '';
+        const incomingForItem = (typeof deliveries !== 'undefined' ? deliveries : []).filter(d => d.itemId === item.id && d.status !== 'received');
+        let incomingBadge = '';
+        if (incomingForItem.length) {
+            const totalIncoming = incomingForItem.reduce((s,d) => s + (d.qty||0), 0);
+            const nearest = [...incomingForItem].sort((a,b) => (a.date||'9999').localeCompare(b.date||'9999'))[0];
+            const dateText = nearest.date ? formatDateRu(nearest.date) : 'дата неизв.';
+            incomingBadge = `<span title="Ожидается поставка" style="display:inline-block; margin-top:2px; font-size:0.65rem; color:#1e40af; background:#eff6ff; border-radius:10px; padding:1px 7px; white-space:nowrap;">🚚 +${totalIncoming} к ${dateText}</span>`;
+        }
         return `<tr class="${lowClass}" data-id="${item.id}">
                     ${checkboxHtml}
                     <td style="color:#94a3b8;font-size:0.75rem;white-space:nowrap;">${escapeHtml(item.artikul||'')}</td>
@@ -1355,7 +1503,7 @@ function importExcel(file) {
                     <td><select class="edit-supplier" data-id="${item.id}">${suppliers.map(s => `<option value="${escapeHtml(s)}" ${s===item.supplier?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></td>
                     <td><select class="edit-subcategory" data-id="${item.id}"><option value="">(без подкатегории)</option>${subcategories.map(sc => `<option value="${escapeHtml(sc)}" ${sc===item.subcategory?'selected':''}>${escapeHtml(sc)}</option>`).join('')}</select></td>
                     <td><div class="stock-cell"><span class="stock-value editable-stock" data-id="${item.id}" data-stock="${item.stock}">${item.stock}</span>
-                        <div class="stock-controls"><button class="stock-minus" data-id="${item.id}">-1</button><button class="stock-plus" data-id="${item.id}">+1</button></div></div></td>
+                        <div class="stock-controls"><button class="stock-minus" data-id="${item.id}">-1</button><button class="stock-plus" data-id="${item.id}">+1</button></div></div>${incomingBadge}</td>
                     <td><span class="min-badge editable-min" data-id="${item.id}" data-min="${item.minStock}">${item.minStock}</span></td>
                     <td><button class="qr-code-btn" data-id="${item.id}" data-artikul="${escapeHtml(item.artikul||'')}" data-name="${escapeHtml(item.name)}">🔲 QR</button></td>
                     <td><button class="delete-btn" data-id="${item.id}">🗑️</button></td>
@@ -1467,10 +1615,22 @@ function importExcel(file) {
         if (low.length === 0) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
         countSpan.innerText = `(${low.length})`;
-        list.innerHTML = low.map(i => `<li>${escapeHtml(i.name)} (${i.category}, ${i.supplier}): остаток ${i.stock} ≤ мин.${i.minStock}
+        list.innerHTML = low.map(i => {
+            const incoming = (typeof deliveries !== 'undefined' ? deliveries : [])
+                .filter(d => d.itemId === i.id && d.status !== 'received')
+                .sort((a,b) => (a.date||'9999').localeCompare(b.date||'9999'));
+            let incomingHtml = '';
+            if (incoming.length) {
+                const totalIncoming = incoming.reduce((s,d) => s + (d.qty||0), 0);
+                const nearest = incoming[0];
+                const dateText = nearest.date ? formatDateRu(nearest.date) : 'дата не указана';
+                incomingHtml = ` <span style="color:#16a34a; font-weight:600;">🚚 едет ${totalIncoming} шт (ближ. ${dateText})</span>`;
+            }
+            return `<li>${escapeHtml(i.name)} (${i.category}, ${i.supplier}): остаток ${i.stock} ≤ мин.${i.minStock}${incomingHtml}
             <button class="increase-min" data-id="${i.id}">+5</button>
             <button class="decrease-min" data-id="${i.id}">-5</button>
-        </li>`).join('');
+        </li>`;
+        }).join('');
         document.querySelectorAll('.increase-min').forEach(btn => btn.addEventListener('click', () => { const id = btn.dataset.id; const it = inventory.find(i => i.id === id); if (it) { it.minStock += 5; saveAll(); } }));
         document.querySelectorAll('.decrease-min').forEach(btn => btn.addEventListener('click', () => { const id = btn.dataset.id; const it = inventory.find(i => i.id === id); if (it && it.minStock >= 5) { it.minStock -= 5; saveAll(); } }));
     }
@@ -2048,6 +2208,490 @@ function importExcel(file) {
         modal.querySelector('.download-purchase-preview').addEventListener('click', () => { exportPurchaseListTxt(); });
     }
 
+    // ========================================================
+    //  БЛИЖАЙШИЕ ПОСТАВКИ
+    // ========================================================
+
+    function findInventoryItemByArtikulOrName(artikul, name) {
+        if (artikul) {
+            const clean = String(artikul).replace(/\s+/g, '').toLowerCase();
+            const byArt = inventory.find(it => it.artikul && it.artikul.replace(/\s+/g, '').toLowerCase() === clean);
+            if (byArt) return byArt;
+        }
+        if (name) {
+            const byName = inventory.find(it => it.name.toLowerCase().trim() === String(name).toLowerCase().trim());
+            if (byName) return byName;
+        }
+        return null;
+    }
+
+    function todayISO() {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+
+    function isOverdue(entry) {
+        if (entry.status === 'received' || !entry.date) return false;
+        return entry.date < todayISO();
+    }
+
+    function deliveryStatusLabel(entry) {
+        if (entry.status === 'received') return { cls: 'received', text: '✅ Получено' };
+        if (isOverdue(entry)) return { cls: 'overdue', text: '⏰ Просрочено' };
+        if (entry.status === 'transit') return { cls: 'transit', text: '🚚 В пути' };
+        return { cls: 'pending', text: '🕓 Ожидается' };
+    }
+
+    function formatDateRu(iso) {
+        if (!iso) return '—';
+        const [y,m,d] = iso.split('-');
+        if (!y || !m || !d) return iso;
+        return `${d}.${m}.${y}`;
+    }
+
+    function markDeliveryReceived(id, applyStock) {
+        const entry = deliveries.find(d => d.id === id);
+        if (!entry) return;
+        if (entry.status === 'received') return; // уже получено, повторно не пополняем
+        entry.status = 'received';
+        if (applyStock !== false && entry.itemId) {
+            const item = inventory.find(i => i.id === entry.itemId);
+            if (item) item.stock = Math.max(0, item.stock + (entry.qty || 0));
+        }
+        saveAll();
+    }
+
+    function setDeliveryStatus(id, newStatus) {
+        const entry = deliveries.find(d => d.id === id);
+        if (!entry) return;
+        const wasReceived = entry.status === 'received';
+        if (newStatus === 'received' && !wasReceived) {
+            markDeliveryReceived(id, true);
+            return;
+        }
+        if (newStatus !== 'received' && wasReceived && entry.itemId) {
+            // снимаем статус "получено" — откатываем остаток, если он был автоматически добавлен
+            const confirmRevert = confirm('Эта поставка уже была отмечена как полученная, и остаток товара был увеличен. Откатить пополнение остатка при смене статуса?');
+            if (confirmRevert) {
+                const item = inventory.find(i => i.id === entry.itemId);
+                if (item) item.stock = Math.max(0, item.stock - (entry.qty || 0));
+            }
+        }
+        entry.status = newStatus;
+        saveAll();
+    }
+
+    function updateDeliveryQty(id, newQty) {
+        const entry = deliveries.find(d => d.id === id);
+        if (!entry) return;
+        const q = parseInt(newQty, 10);
+        entry.qty = (isNaN(q) || q < 0) ? 0 : q;
+        saveAll();
+    }
+
+    function updateDeliveryDate(id, newDate) {
+        const entry = deliveries.find(d => d.id === id);
+        if (!entry) return;
+        entry.date = newDate || '';
+        saveAll();
+    }
+
+    function updateDeliverySupplier(id, newSupplier) {
+        const entry = deliveries.find(d => d.id === id);
+        if (!entry) return;
+        entry.supplier = newSupplier;
+        saveAll();
+    }
+
+    function removeDelivery(id) {
+        deliveries = deliveries.filter(d => d.id !== id);
+        saveAll();
+    }
+
+    function clearReceivedDeliveries() {
+        const receivedCount = deliveries.filter(d => d.status === 'received').length;
+        if (receivedCount === 0) { alert('Нет полученных поставок для удаления из списка.'); return; }
+        if (confirm(`Убрать из списка ${receivedCount} уже полученных поставок? Остатки товаров это не затронет.`)) {
+            deliveries = deliveries.filter(d => d.status !== 'received');
+            saveAll();
+        }
+    }
+
+    function openDeliveryBuilder(deliveryId) {
+        editingDeliveryId = deliveryId || null;
+        const entry = deliveryId ? deliveries.find(d => d.id === deliveryId) : null;
+        document.getElementById('deliveryBuilderTitle').textContent = entry ? 'Редактировать поставку' : 'Новая поставка';
+        const itemSelect = document.getElementById('deliveryItemSelect');
+        itemSelect.innerHTML = inventory.map(it => `<option value="${it.id}" ${entry && entry.itemId===it.id ? 'selected':''}>${escapeHtml(it.name)}${it.artikul ? ' (арт. '+escapeHtml(it.artikul)+')' : ''}</option>`).join('');
+        const supSelect = document.getElementById('deliverySupplierInput');
+        supSelect.innerHTML = suppliers.map(s => `<option ${entry && entry.supplier===s ? 'selected':''}>${escapeHtml(s)}</option>`).join('');
+        document.getElementById('deliveryQtyInput').value = entry ? entry.qty : 1;
+        document.getElementById('deliveryDateInput').value = entry ? (entry.date || '') : todayISO();
+        document.getElementById('deliveryStatusInput').value = entry ? entry.status : 'pending';
+        document.getElementById('deliveryNoteInput').value = entry ? (entry.note || '') : '';
+        document.getElementById('deliveryBuilder').style.display = '';
+        document.getElementById('deliveryBuilder').scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function saveDeliveryFromBuilder() {
+        const itemId = document.getElementById('deliveryItemSelect').value;
+        const item = inventory.find(i => i.id === itemId);
+        if (!item) { alert('Выберите товар'); return; }
+        const supplier = document.getElementById('deliverySupplierInput').value;
+        const qty = parseInt(document.getElementById('deliveryQtyInput').value, 10);
+        const date = document.getElementById('deliveryDateInput').value || '';
+        const status = document.getElementById('deliveryStatusInput').value;
+        const note = document.getElementById('deliveryNoteInput').value.trim();
+        if (isNaN(qty) || qty < 1) { alert('Укажите корректное количество'); return; }
+
+        if (editingDeliveryId) {
+            const entry = deliveries.find(d => d.id === editingDeliveryId);
+            if (entry) {
+                const wasReceived = entry.status === 'received';
+                Object.assign(entry, { itemId: item.id, name: item.name, artikul: item.artikul || '', supplier, qty, date, note });
+                if (status === 'received' && !wasReceived) { markDeliveryReceived(entry.id, true); }
+                else if (status !== 'received' && wasReceived) { entry.status = status; }
+                else { entry.status = status; }
+            }
+        } else {
+            const entry = {
+                id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+                itemId: item.id, name: item.name, artikul: item.artikul || '',
+                supplier, qty, date, status: 'pending', note, importBatch: null
+            };
+            deliveries.push(entry);
+            if (status === 'received') markDeliveryReceived(entry.id, true);
+        }
+        editingDeliveryId = null;
+        document.getElementById('deliveryBuilder').style.display = 'none';
+        saveAll();
+    }
+
+    function getDeliveryGroupKey(entry) {
+        if (deliveryGroupBy === 'supplier') return entry.supplier || '(без поставщика)';
+        if (deliveryGroupBy === 'status') return deliveryStatusLabel(entry).text;
+        if (deliveryGroupBy === 'date') return entry.date || '(без даты)';
+        return 'all';
+    }
+
+    function getFilteredDeliveries() {
+        const filterStatusEl = document.getElementById('deliveryFilterStatus');
+        const filterStatus = filterStatusEl ? filterStatusEl.value : 'all';
+        return deliveries.filter(d => {
+            if (filterStatus === 'all') return true;
+            if (filterStatus === 'pending') return d.status === 'pending' && !isOverdue(d);
+            return d.status === filterStatus;
+        });
+    }
+
+    function renderDeliverySummary() {
+        const el = document.getElementById('deliverySummary');
+        if (!el) return;
+        if (deliveries.length === 0) { el.innerHTML = ''; return; }
+        const pendingCount = deliveries.filter(d => d.status !== 'received' && !isOverdue(d)).length;
+        const overdueCount = deliveries.filter(d => isOverdue(d)).length;
+        const totalQtyIncoming = deliveries.filter(d => d.status !== 'received').reduce((s,d) => s + (d.qty||0), 0);
+        let html = `<span class="delivery-summary-chip">📦 В ожидании: ${pendingCount}</span>
+                     <span class="delivery-summary-chip">🔢 Едет штук: ${totalQtyIncoming}</span>`;
+        if (overdueCount > 0) html += `<span class="delivery-summary-chip overdue">⏰ Просрочено: ${overdueCount}</span>`;
+        el.innerHTML = html;
+    }
+
+    function buildDeliveryRow(entry) {
+        const status = deliveryStatusLabel(entry);
+        const isLinked = !!entry.itemId && inventory.find(i => i.id === entry.itemId);
+        const metaParts = [];
+        if (entry.artikul) metaParts.push(`арт. ${escapeHtml(entry.artikul)}`);
+        if (!isLinked) metaParts.push('<span class="no-match-tag">⚠ не привязан к товару</span>');
+        if (entry.note) metaParts.push(escapeHtml(entry.note));
+        const disabledAttr = entry.status === 'received' ? 'disabled' : '';
+        return `<div class="delivery-row" data-delivery-id="${entry.id}">
+            <span class="delivery-status-pill ${status.cls}">${status.text}</span>
+            <div class="delivery-row-name">
+                <div class="delivery-row-title">${escapeHtml(entry.name)}</div>
+                <div class="delivery-row-meta">${metaParts.join(' · ')}</div>
+            </div>
+            <span class="delivery-supplier-tag">${escapeHtml(entry.supplier || '—')}</span>
+            <input type="date" class="delivery-date-input" data-id="${entry.id}" value="${entry.date || ''}" ${disabledAttr} title="Ожидаемая дата">
+            <input type="number" class="delivery-qty-input" data-id="${entry.id}" value="${entry.qty}" min="0" ${disabledAttr} title="Количество">
+            <select class="delivery-status-select" data-id="${entry.id}" title="Статус">
+                <option value="pending" ${entry.status==='pending'?'selected':''}>Ожидается</option>
+                <option value="transit" ${entry.status==='transit'?'selected':''}>В пути</option>
+                <option value="received" ${entry.status==='received'?'selected':''}>Получено</option>
+            </select>
+            <button class="kit-edit-btn delivery-edit-btn" data-id="${entry.id}">✏️</button>
+            <button class="delivery-row-remove" data-id="${entry.id}" title="Удалить">✖</button>
+        </div>`;
+    }
+
+    function renderDeliveries() {
+        const container = document.getElementById('deliveryListContainer');
+        const empty = document.getElementById('deliveryEmpty');
+        if (!container || !empty) return;
+
+        renderDeliverySummary();
+
+        const filtered = getFilteredDeliveries();
+        if (filtered.length === 0) {
+            container.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+        empty.style.display = 'none';
+
+        // сортировка по дате (без даты — в конец), затем по статусу
+        const sorted = [...filtered].sort((a,b) => {
+            const da = a.date || '9999-99-99';
+            const db = b.date || '9999-99-99';
+            return da.localeCompare(db);
+        });
+
+        if (deliveryGroupBy === 'none') {
+            container.innerHTML = `<div class="delivery-group open"><div class="delivery-group-body" style="display:block;">${sorted.map(buildDeliveryRow).join('')}</div></div>`;
+        } else {
+            const groups = new Map();
+            for (const entry of sorted) {
+                const key = getDeliveryGroupKey(entry);
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(entry);
+            }
+            let keys = [...groups.keys()];
+            if (deliveryGroupBy === 'date') {
+                keys.sort((a,b) => {
+                    if (a === '(без даты)') return 1;
+                    if (b === '(без даты)') return -1;
+                    return a.localeCompare(b);
+                });
+            } else {
+                keys.sort();
+            }
+            container.innerHTML = keys.map(key => {
+                const groupEntries = groups.get(key);
+                const isCollapsed = collapsedDeliveryGroups.has(key);
+                const totalQty = groupEntries.reduce((s,e) => s + (e.qty||0), 0);
+                const displayKey = deliveryGroupBy === 'date' && key !== '(без даты)' ? formatDateRu(key) : key;
+                const hasOverdueInGroup = groupEntries.some(e => isOverdue(e));
+                return `<div class="delivery-group ${isCollapsed ? '' : 'open'}" data-group-key="${escapeHtml(key)}">
+                    <div class="delivery-group-header">
+                        <span class="delivery-group-toggle">▶</span>
+                        <span class="delivery-group-title">${hasOverdueInGroup ? '⏰ ' : ''}${escapeHtml(displayKey)}</span>
+                        <span class="delivery-group-count">${groupEntries.length} поз. · ${totalQty} шт</span>
+                    </div>
+                    <div class="delivery-group-body" style="${isCollapsed ? '' : 'display:block;'}">
+                        ${groupEntries.map(buildDeliveryRow).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        container.querySelectorAll('.delivery-group-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const groupEl = header.closest('.delivery-group');
+                const key = groupEl.dataset.groupKey;
+                const body = groupEl.querySelector('.delivery-group-body');
+                const isOpen = groupEl.classList.contains('open');
+                if (isOpen) {
+                    groupEl.classList.remove('open');
+                    body.style.display = 'none';
+                    if (key !== undefined) collapsedDeliveryGroups.add(key);
+                } else {
+                    groupEl.classList.add('open');
+                    body.style.display = 'block';
+                    if (key !== undefined) collapsedDeliveryGroups.delete(key);
+                }
+                localStorage.setItem('collapsedDeliveryGroups', JSON.stringify([...collapsedDeliveryGroups]));
+            });
+        });
+        container.querySelectorAll('.delivery-qty-input').forEach(input => {
+            input.addEventListener('change', () => updateDeliveryQty(input.dataset.id, input.value));
+            input.addEventListener('click', e => e.stopPropagation());
+        });
+        container.querySelectorAll('.delivery-date-input').forEach(input => {
+            input.addEventListener('change', () => updateDeliveryDate(input.dataset.id, input.value));
+            input.addEventListener('click', e => e.stopPropagation());
+        });
+        container.querySelectorAll('.delivery-status-select').forEach(sel => {
+            sel.addEventListener('change', () => setDeliveryStatus(sel.dataset.id, sel.value));
+            sel.addEventListener('click', e => e.stopPropagation());
+        });
+        container.querySelectorAll('.delivery-edit-btn').forEach(btn => {
+            btn.addEventListener('click', e => { e.stopPropagation(); openDeliveryBuilder(btn.dataset.id); });
+        });
+        container.querySelectorAll('.delivery-row-remove').forEach(btn => {
+            btn.addEventListener('click', e => { e.stopPropagation(); if (confirm('Удалить эту поставку из списка?')) removeDelivery(btn.dataset.id); });
+        });
+    }
+
+    function expandAllDeliveryGroups() {
+        collapsedDeliveryGroups.clear();
+        localStorage.setItem('collapsedDeliveryGroups', JSON.stringify([]));
+        renderDeliveries();
+    }
+    function collapseAllDeliveryGroups() {
+        const groups = new Map();
+        for (const entry of deliveries) groups.set(getDeliveryGroupKey(entry), true);
+        collapsedDeliveryGroups = new Set(groups.keys());
+        localStorage.setItem('collapsedDeliveryGroups', JSON.stringify([...collapsedDeliveryGroups]));
+        renderDeliveries();
+    }
+
+    // ---- Импорт поставок из Excel/CSV (УПД / накладная) ----
+    function importDeliveryFile(file) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'csv') importDeliveryCsv(file);
+        else importDeliveryExcel(file);
+    }
+
+    function findDeliveryHeaderColumns(rows) {
+        let headerRowIndex = -1, nameCol = -1, qtyCol = -1, artikulCol = -1;
+        for (let i = 0; i < Math.min(rows.length, 50); i++) {
+            const row = rows[i];
+            if (!row) continue;
+            let tn = -1, tq = -1, ta = -1;
+            for (let j = 0; j < row.length; j++) {
+                const cell = String(row[j] || '').toLowerCase().trim();
+                if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
+                if (cell === 'артикул' || cell.includes('артикул') || cell === 'код') ta = j;
+                if (cell.includes('кол-во') || cell.includes('количество') || cell === 'кол.' || cell.includes('кол во')) tq = j;
+            }
+            if (tn !== -1 && tq !== -1) {
+                nameCol = tn; qtyCol = tq;
+                if (ta !== -1) artikulCol = ta;
+                headerRowIndex = i;
+                break;
+            }
+        }
+        return { headerRowIndex, nameCol, qtyCol, artikulCol };
+    }
+
+    function processDeliveryRows(rows, defaultSupplier, defaultDate) {
+        const { headerRowIndex, nameCol, qtyCol, artikulCol } = findDeliveryHeaderColumns(rows);
+        if (headerRowIndex === -1) {
+            alert('Не удалось найти колонки «Наименование» и «Количество» в файле. Проверьте, что это таблица УПД/накладной с понятными заголовками.');
+            return null;
+        }
+        const skipWords = ['итого','всего','склад','параметры','отбор','показать','основной склад'];
+        const isSkipRow = (text) => skipWords.some(w => text.toLowerCase().includes(w));
+        const defMin = parseInt(document.getElementById('defaultMinStock')?.value, 10) || 5;
+
+        let added = 0, createdNew = [], skipped = 0;
+        for (let i = headerRowIndex + 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length === 0) continue;
+            let name = row[nameCol] !== undefined ? String(row[nameCol]).trim() : '';
+            let artikul = (artikulCol >= 0 && row[artikulCol] !== undefined) ? String(row[artikulCol]).trim() : '';
+            if (!name || isSkipRow(name)) { skipped++; continue; }
+            let qtyRaw = row[qtyCol];
+            if (qtyRaw === undefined || qtyRaw === null || qtyRaw === '') { skipped++; continue; }
+            if (typeof qtyRaw === 'string') qtyRaw = qtyRaw.replace(/\s/g, '').replace(',', '.');
+            const qty = parseFloat(qtyRaw);
+            if (isNaN(qty) || qty <= 0) { skipped++; continue; }
+
+            // Сначала ищем среди уже существующих товаров (по артикулу, затем по названию)
+            let matched = findInventoryItemByArtikulOrName(artikul, name);
+
+            // Если не нашли — создаём новую позицию в остатках (с нулевым стартовым остатком),
+            // чтобы при получении поставки остаток корректно пополнился
+            if (!matched) {
+                matched = {
+                    id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+                    name, artikul: artikul || '',
+                    category: detectCategoryFromName(name),
+                    supplier: defaultSupplier,
+                    subcategory: detectSubcategoryFromName(name),
+                    stock: 0, minStock: defMin
+                };
+                if (!categories.includes(matched.category)) categories.push(matched.category);
+                if (matched.subcategory && !subcategories.includes(matched.subcategory)) subcategories.push(matched.subcategory);
+                inventory.push(matched);
+                createdNew.push(`${name}${artikul ? ' (арт. '+artikul+')' : ''}`);
+            }
+
+            deliveries.push({
+                id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+                itemId: matched.id,
+                name: matched.name,
+                artikul: matched.artikul || artikul,
+                supplier: defaultSupplier,
+                qty: Math.round(qty),
+                date: defaultDate,
+                status: 'pending',
+                note: '',
+                importBatch: 'import-' + Date.now()
+            });
+            added++;
+        }
+        return { added, createdNew, skipped };
+    }
+
+    function promptDeliveryImportDefaults() {
+        const supplier = prompt('Поставщик для этой поставки:', suppliers[0] || 'Из 1С') || 'Из 1С';
+        if (!suppliers.includes(supplier)) suppliers.push(supplier);
+        const dateInput = prompt('Ожидаемая дата поставки (ГГГГ-ММ-ДД), оставьте пустым если неизвестно:', todayISO()) || '';
+        return { supplier, date: dateInput.trim() };
+    }
+
+    function showDeliveryImportReport(result) {
+        if (!result) return;
+        let msg = `✅ Импорт поставки завершён!\nДобавлено позиций: ${result.added}\nПропущено строк: ${result.skipped}\n`;
+        if (result.createdNew.length) {
+            msg += `\n🆕 Созданы как новые товары в остатках (не найдено совпадений по артикулу/названию) — ${result.createdNew.length}:\n` + result.createdNew.slice(0, 15).join('\n');
+            if (result.createdNew.length > 15) msg += `\n...и ещё ${result.createdNew.length - 15}.`;
+            msg += '\n\nДля них установлен стартовый остаток 0 и категория определена автоматически по названию — проверьте и поправьте при необходимости.';
+        }
+        alert(msg);
+    }
+
+    function importDeliveryExcel(file) {
+        if (typeof XLSX === 'undefined') { alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.'); return; }
+        const { supplier, date } = promptDeliveryImportDefaults();
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+                if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
+                const result = processDeliveryRows(rows, supplier, date);
+                if (result) { saveAll(); showDeliveryImportReport(result); }
+            } catch(err) { console.error(err); alert('Ошибка импорта: ' + err.message); }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function importDeliveryCsv(file) {
+        const { supplier, date } = promptDeliveryImportDefaults();
+        function parseCSVLine(line) {
+            const cols = []; let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+                else if (ch === ',' && !inQ) { cols.push(cur); cur = ''; }
+                else cur += ch;
+            }
+            cols.push(cur);
+            return cols.map(v => v.trim());
+        }
+        function processText(text) {
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            const rows = lines.map(parseCSVLine);
+            if (rows.length < 2) { alert('Файл пуст'); return; }
+            const result = processDeliveryRows(rows, supplier, date);
+            if (result) { saveAll(); showDeliveryImportReport(result); }
+        }
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            const enc = (bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF) ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => processText(te.target.result);
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
+    }
+
     // ---------- ГЕНЕРАЦИЯ QR-кода для товара ----------
     function generateQRCode(item) {
         const baseUrl = window.location.href.split('?')[0];
@@ -2269,6 +2913,18 @@ function importExcel(file) {
         on('purchaseClearBtn', 'click', clearPurchaseList);
         on('purchaseExportTxtBtn', 'click', exportPurchaseListTxt);
         on('purchasePreviewBtn', 'click', previewPurchaseListTxt);
+
+        // --- Ближайшие поставки: обработчики ---
+        on('newDeliveryBtn', 'click', () => openDeliveryBuilder(null));
+        on('saveDeliveryBtn', 'click', saveDeliveryFromBuilder);
+        on('cancelDeliveryBtn', 'click', () => { byId('deliveryBuilder').style.display = 'none'; editingDeliveryId = null; });
+        on('deliveryGroupBy', 'change', () => { deliveryGroupBy = byId('deliveryGroupBy').value; collapsedDeliveryGroups.clear(); saveAll(); });
+        on('deliveryFilterStatus', 'change', renderDeliveries);
+        on('deliveryExpandAllBtn', 'click', expandAllDeliveryGroups);
+        on('deliveryCollapseAllBtn', 'click', collapseAllDeliveryGroups);
+        on('deliveryClearReceivedBtn', 'click', clearReceivedDeliveries);
+        const deliveryFileInput = byId('importDeliveryFileInput');
+        if (deliveryFileInput) deliveryFileInput.addEventListener('change', e => { if (e.target.files[0]) importDeliveryFile(e.target.files[0]); deliveryFileInput.value = ''; });
 
         const excelInput = byId('importExcelInput');
         if (excelInput) excelInput.addEventListener('change', e => { if (e.target.files[0]) importExcel(e.target.files[0]); excelInput.value = ''; });
