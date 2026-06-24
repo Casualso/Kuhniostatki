@@ -528,9 +528,19 @@
             <button id="exportCsvBtn" class="btn-outline">📎 Экспорт CSV</button>
             <label for="importCsvInput" class="btn-outline" style="cursor:pointer;">📂 Импорт CSV</label>
             <input type="file" id="importCsvInput" accept=".csv" style="display:none;">
+            <label for="importSpecsInput" class="btn-outline" style="cursor:pointer;">💰 Импорт цены/веса/объёма</label>
+            <input type="file" id="importSpecsInput" accept=".xlsx,.xls,.csv" style="display:none;">
         </div>
         <div><span class="badge" style="background:#fee2e2;">🔴 красный = остаток ≤ мин. порогу</span></div>
     </div>
+
+    <details style="margin-bottom:16px;">
+        <summary style="font-size:0.72rem;color:#94a3b8;cursor:pointer;">📄 Как импортировать цены/вес/объём из Excel или CSV</summary>
+        <div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;font-size:0.75rem;color:#475569;line-height:1.8;">
+            Загрузите таблицу с характеристиками товаров. Система сама найдёт колонки <strong>«Наименование»</strong>/<strong>«Артикул»</strong> (для привязки) и <strong>«Цена»</strong>, <strong>«Вес»</strong>, <strong>«Объём»</strong> (ищет похожие заголовки: «закупочная цена», «вес, кг», «объём, м3» и т.п.).<br><br>
+            Сопоставление — сначала по артикулу, затем по точному названию. Если товар не найден в базе остатков — строка пропускается (характеристики применяются только к уже существующим товарам). Можно загружать как полный набор колонок, так и часть — пустые значения просто не будут перезаписаны.
+        </div>
+    </details>
 
     <!-- Фильтры товаров -->
     <div class="filter-bar">
@@ -700,6 +710,9 @@
                     if (!item.supplier) item.supplier = 'Другой';
                     if (!item.subcategory) item.subcategory = '';
                     if (!item.artikul) item.artikul = '';
+                    if (typeof item.price !== 'number') item.price = null;
+                    if (typeof item.weight !== 'number') item.weight = null;
+                    if (typeof item.volume !== 'number') item.volume = null;
                 });
             } catch(e) { inventory = []; }
         } else {
@@ -922,7 +935,8 @@ function importExcel(file) {
                     inventory.push({
                         id: Date.now()+'-'+Math.random().toString(36).substr(2,6),
                         name: p.name, artikul: p.artikul || '', category: p.category,
-                        supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin
+                        supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin,
+                        price: null, weight: null, volume: null
                     });
                     added++;
                 }
@@ -953,6 +967,136 @@ function importExcel(file) {
     };
     reader.readAsArrayBuffer(file);
 }
+
+    // ========================================================
+    //  ИМПОРТ ХАРАКТЕРИСТИК ТОВАРОВ (закупочная цена, вес, объём)
+    // ========================================================
+
+    function findSpecsHeaderColumns(rows) {
+        let headerRowIndex = -1, nameCol = -1, artikulCol = -1, priceCol = -1, weightCol = -1, volumeCol = -1;
+        for (let i = 0; i < Math.min(rows.length, 50); i++) {
+            const row = rows[i];
+            if (!row) continue;
+            let tn = -1, ta = -1, tp = -1, tw = -1, tv = -1;
+            for (let j = 0; j < row.length; j++) {
+                const cell = String(row[j] || '').toLowerCase().trim();
+                if (cell.includes('номенклат') || cell.includes('наименован') || cell === 'товар') tn = j;
+                if (cell === 'артикул' || cell.includes('артикул') || cell === 'код') ta = j;
+                if (cell.includes('цена') || cell.includes('стоимост')) tp = j;
+                if (cell.includes('вес') || cell.includes('масса')) tw = j;
+                if (cell.includes('объ') ) tv = j; // объём / объем
+            }
+            // считаем заголовок найденным, если есть способ привязки (имя или артикул) и хотя бы одна характеристика
+            if ((tn !== -1 || ta !== -1) && (tp !== -1 || tw !== -1 || tv !== -1)) {
+                nameCol = tn; artikulCol = ta; priceCol = tp; weightCol = tw; volumeCol = tv;
+                headerRowIndex = i;
+                break;
+            }
+        }
+        return { headerRowIndex, nameCol, artikulCol, priceCol, weightCol, volumeCol };
+    }
+
+    function parseSpecNumber(raw) {
+        if (raw === undefined || raw === null || raw === '') return null;
+        if (typeof raw === 'string') raw = raw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.\-]/g, '');
+        const n = parseFloat(raw);
+        return isNaN(n) ? null : n;
+    }
+
+    function processSpecsRows(rows) {
+        const { headerRowIndex, nameCol, artikulCol, priceCol, weightCol, volumeCol } = findSpecsHeaderColumns(rows);
+        if (headerRowIndex === -1) {
+            alert('Не удалось найти колонки «Наименование»/«Артикул» вместе хотя бы с одной из колонок «Цена», «Вес» или «Объём». Проверьте заголовки таблицы.');
+            return null;
+        }
+        let updated = 0, notFound = [], skipped = 0;
+        for (let i = headerRowIndex + 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length === 0) continue;
+            const name = nameCol >= 0 && row[nameCol] !== undefined ? String(row[nameCol]).trim() : '';
+            const artikul = artikulCol >= 0 && row[artikulCol] !== undefined ? String(row[artikulCol]).trim() : '';
+            if (!name && !artikul) { skipped++; continue; }
+
+            const price = priceCol >= 0 ? parseSpecNumber(row[priceCol]) : null;
+            const weight = weightCol >= 0 ? parseSpecNumber(row[weightCol]) : null;
+            const volume = volumeCol >= 0 ? parseSpecNumber(row[volumeCol]) : null;
+            if (price === null && weight === null && volume === null) { skipped++; continue; }
+
+            const matched = findInventoryItemByArtikulOrName(artikul, name);
+            if (!matched) { notFound.push(`${name || '(без названия)'}${artikul ? ' (арт. '+artikul+')' : ''}`); continue; }
+
+            if (price !== null) matched.price = price;
+            if (weight !== null) matched.weight = weight;
+            if (volume !== null) matched.volume = volume;
+            updated++;
+        }
+        return { updated, notFound, skipped };
+    }
+
+    function showSpecsImportReport(result) {
+        if (!result) return;
+        let msg = `✅ Импорт характеристик завершён!\nОбновлено товаров: ${result.updated}\nПропущено строк: ${result.skipped}\n`;
+        if (result.notFound.length) {
+            msg += `\n⚠️ Не найдены в базе остатков (${result.notFound.length}):\n` + result.notFound.slice(0, 15).join('\n');
+            if (result.notFound.length > 15) msg += `\n...и ещё ${result.notFound.length - 15}.`;
+            msg += '\n\nХарактеристики применяются только к уже существующим товарам — сначала добавьте такие позиции в остатки (например, импортом Excel/CSV), затем повторите импорт характеристик.';
+        }
+        alert(msg);
+    }
+
+    function importSpecsExcel(file) {
+        if (typeof XLSX === 'undefined') { alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.'); return; }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+                if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
+                const result = processSpecsRows(rows);
+                if (result) { saveAll(); showSpecsImportReport(result); }
+            } catch(err) { console.error(err); alert('Ошибка импорта: ' + err.message); }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function importSpecsCsv(file) {
+        function parseCSVLine(line) {
+            const cols = []; let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+                else if (ch === ',' && !inQ) { cols.push(cur); cur = ''; }
+                else cur += ch;
+            }
+            cols.push(cur);
+            return cols.map(v => v.trim());
+        }
+        function processText(text) {
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            const rows = lines.map(parseCSVLine);
+            if (rows.length < 2) { alert('Файл пуст'); return; }
+            const result = processSpecsRows(rows);
+            if (result) { saveAll(); showSpecsImportReport(result); }
+        }
+        const binReader = new FileReader();
+        binReader.onload = (be) => {
+            const bytes = new Uint8Array(be.target.result);
+            const enc = (bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF) ? 'UTF-8' : 'windows-1251';
+            const txtReader = new FileReader();
+            txtReader.onload = (te) => processText(te.target.result);
+            txtReader.readAsText(file, enc);
+        };
+        binReader.readAsArrayBuffer(file);
+    }
+
+    function importSpecsFile(file) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'csv') importSpecsCsv(file);
+        else importSpecsExcel(file);
+    }
 
     // ------------------- НАБОРЫ -------------------
     let kitGroupBy = 'none';
@@ -1318,7 +1462,8 @@ function importExcel(file) {
             supplier: supplier || 'Другой',
             subcategory: subcategory || '',
             stock: Math.max(0, stockNum),
-            minStock: Math.max(0, minNum)
+            minStock: Math.max(0, minNum),
+            price: null, weight: null, volume: null
         };
         inventory.push(newItem);
         saveAll();
@@ -1728,7 +1873,7 @@ function importExcel(file) {
                     ex.stock = stock; ex.minStock = minStock;
                     updated++;
                 } else {
-                    inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock });
+                    inventory.push({ id: Date.now()+'-'+Math.random().toString(36).substr(2,6), name, category: cat, supplier: sup, subcategory: sub, stock, minStock, price: null, weight: null, volume: null });
                     added++;
                 }
             }
@@ -1996,11 +2141,33 @@ function importExcel(file) {
         const totalPositions = purchaseList.length;
         const totalQty = purchaseList.reduce((s, p) => s + (p.qty || 0), 0);
         const supplierCount = new Set(purchaseList.map(p => p.supplier || '(без поставщика)')).size;
-        el.innerHTML = `
+
+        let totalPrice = 0, totalWeight = 0, totalVolume = 0;
+        let hasPrice = false, hasWeight = false, hasVolume = false;
+        for (const entry of purchaseList) {
+            const item = entry.itemId ? inventory.find(i => i.id === entry.itemId) : null;
+            if (!item) continue;
+            if (typeof item.price === 'number') { totalPrice += item.price * entry.qty; hasPrice = true; }
+            if (typeof item.weight === 'number') { totalWeight += item.weight * entry.qty; hasWeight = true; }
+            if (typeof item.volume === 'number') { totalVolume += item.volume * entry.qty; hasVolume = true; }
+        }
+
+        let html = `
             <span class="purchase-summary-chip">📦 Позиций: ${totalPositions}</span>
             <span class="purchase-summary-chip">🔢 Общее количество: ${totalQty}</span>
             <span class="purchase-summary-chip">🏭 Поставщиков: ${supplierCount}</span>
         `;
+        if (hasPrice) html += `<span class="purchase-summary-chip">💰 Сумма закупки: ${formatMoney(totalPrice)} ₽</span>`;
+        if (hasWeight) html += `<span class="purchase-summary-chip">⚖️ Общий вес: ${formatNum(totalWeight, 2)} кг</span>`;
+        if (hasVolume) html += `<span class="purchase-summary-chip">📦 Общий объём: ${formatNum(totalVolume, 3)} м³</span>`;
+        el.innerHTML = html;
+    }
+
+    function formatMoney(n) {
+        return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+    }
+    function formatNum(n, digits) {
+        return n.toLocaleString('ru-RU', { maximumFractionDigits: digits !== undefined ? digits : 3 });
     }
 
     function buildPurchaseRow(entry) {
@@ -2013,6 +2180,16 @@ function importExcel(file) {
         if (entry.artikul) metaParts.push(`арт. ${escapeHtml(entry.artikul)}`);
         if (hasDeficitInfo) metaParts.push(`<span class="${stock <= minStock ? 'deficit-tag' : ''}">остаток ${stock} / мин. ${minStock}</span>`);
         if (entry.manual) metaParts.push('вручную');
+
+        // Закупочная сумма / вес / объём по характеристикам товара
+        if (currentItem) {
+            const specParts = [];
+            if (typeof currentItem.price === 'number') specParts.push(`💰 ${formatMoney(currentItem.price * entry.qty)} ₽`);
+            if (typeof currentItem.weight === 'number') specParts.push(`⚖️ ${formatNum(currentItem.weight * entry.qty, 2)} кг`);
+            if (typeof currentItem.volume === 'number') specParts.push(`📦 ${formatNum(currentItem.volume * entry.qty, 3)} м³`);
+            if (specParts.length) metaParts.push(specParts.join(' · '));
+        }
+
         if (isLive) {
             const incomingForItem = (typeof deliveries !== 'undefined' ? deliveries : [])
                 .filter(d => d.itemId === entry.itemId && d.status !== 'received')
@@ -2152,15 +2329,18 @@ function importExcel(file) {
         }
         const supplierNames = [...groups.keys()].sort();
 
-        let grandTotalQty = 0;
+        let grandTotalQty = 0, grandTotalPrice = 0, grandTotalWeight = 0, grandTotalVolume = 0;
+        let grandHasPrice = false, grandHasWeight = false, grandHasVolume = false;
         for (const supplierName of supplierNames) {
             const entries = groups.get(supplierName);
             lines.push(`ПОСТАВЩИК: ${supplierName}`);
             lines.push('-'.repeat(60));
-            let supplierTotalQty = 0;
+            let supplierTotalQty = 0, supplierTotalPrice = 0, supplierTotalWeight = 0, supplierTotalVolume = 0;
+            let supplierHasPrice = false, supplierHasWeight = false, supplierHasVolume = false;
             entries.forEach((entry, idx) => {
                 const artikulPart = entry.artikul ? ` (арт. ${entry.artikul})` : '';
                 let incomingPart = '';
+                const item = entry.itemId ? inventory.find(i => i.id === entry.itemId) : null;
                 if (entry.itemId) {
                     const incomingForItem = deliveries
                         .filter(d => d.itemId === entry.itemId && d.status !== 'received')
@@ -2172,17 +2352,40 @@ function importExcel(file) {
                         incomingPart = ` [уже едет ${totalIncoming} шт, ближайшая ${dateText}]`;
                     }
                 }
-                lines.push(`${idx + 1}. ${entry.name}${artikulPart} — ${entry.qty} шт.${incomingPart}`);
+                let specPart = '';
+                if (item) {
+                    const specBits = [];
+                    if (typeof item.price === 'number') { const v = item.price*entry.qty; specBits.push(`${formatMoney(v)} ₽`); supplierTotalPrice += v; supplierHasPrice = true; }
+                    if (typeof item.weight === 'number') { const v = item.weight*entry.qty; specBits.push(`${formatNum(v,2)} кг`); supplierTotalWeight += v; supplierHasWeight = true; }
+                    if (typeof item.volume === 'number') { const v = item.volume*entry.qty; specBits.push(`${formatNum(v,3)} м³`); supplierTotalVolume += v; supplierHasVolume = true; }
+                    if (specBits.length) specPart = ` (${specBits.join(', ')})`;
+                }
+                lines.push(`${idx + 1}. ${entry.name}${artikulPart} — ${entry.qty} шт.${specPart}${incomingPart}`);
                 supplierTotalQty += entry.qty || 0;
             });
             lines.push('-'.repeat(60));
-            lines.push(`Итого по поставщику «${supplierName}»: ${entries.length} позиций, ${supplierTotalQty} шт.`);
+            let supplierTotalsLine = `Итого по поставщику «${supplierName}»: ${entries.length} позиций, ${supplierTotalQty} шт.`;
+            const supplierSpecBits = [];
+            if (supplierHasPrice) supplierSpecBits.push(`сумма ${formatMoney(supplierTotalPrice)} ₽`);
+            if (supplierHasWeight) supplierSpecBits.push(`вес ${formatNum(supplierTotalWeight,2)} кг`);
+            if (supplierHasVolume) supplierSpecBits.push(`объём ${formatNum(supplierTotalVolume,3)} м³`);
+            if (supplierSpecBits.length) supplierTotalsLine += ', ' + supplierSpecBits.join(', ');
+            lines.push(supplierTotalsLine);
             lines.push('');
             grandTotalQty += supplierTotalQty;
+            if (supplierHasPrice) { grandTotalPrice += supplierTotalPrice; grandHasPrice = true; }
+            if (supplierHasWeight) { grandTotalWeight += supplierTotalWeight; grandHasWeight = true; }
+            if (supplierHasVolume) { grandTotalVolume += supplierTotalVolume; grandHasVolume = true; }
         }
 
         lines.push('='.repeat(60));
-        lines.push(`ВСЕГО: ${purchaseList.length} позиций, ${grandTotalQty} шт., ${supplierNames.length} поставщик(ов)`);
+        let grandLine = `ВСЕГО: ${purchaseList.length} позиций, ${grandTotalQty} шт., ${supplierNames.length} поставщик(ов)`;
+        const grandSpecBits = [];
+        if (grandHasPrice) grandSpecBits.push(`сумма закупки ${formatMoney(grandTotalPrice)} ₽`);
+        if (grandHasWeight) grandSpecBits.push(`общий вес ${formatNum(grandTotalWeight,2)} кг`);
+        if (grandHasVolume) grandSpecBits.push(`общий объём ${formatNum(grandTotalVolume,3)} м³`);
+        if (grandSpecBits.length) grandLine += '\n' + grandSpecBits.join(', ');
+        lines.push(grandLine);
         return lines.join('\n');
     }
 
@@ -2623,7 +2826,8 @@ function importExcel(file) {
                     category: detectCategoryFromName(name),
                     supplier: defaultSupplier,
                     subcategory: detectSubcategoryFromName(name),
-                    stock: 0, minStock: defMin
+                    stock: 0, minStock: defMin,
+                    price: null, weight: null, volume: null
                 };
                 if (!categories.includes(matched.category)) categories.push(matched.category);
                 if (matched.subcategory && !subcategories.includes(matched.subcategory)) subcategories.push(matched.subcategory);
@@ -2956,6 +3160,8 @@ function importExcel(file) {
         if (csvInput) csvInput.addEventListener('change', e => { if (e.target.files[0]) importCSV(e.target.files[0]); csvInput.value = ''; });
         const kitsTxtInput = byId('importKitsTxtInput');
         if (kitsTxtInput) kitsTxtInput.addEventListener('change', e => { if (e.target.files[0]) importKitsTxt(e.target.files[0]); kitsTxtInput.value = ''; });
+        const specsInput = byId('importSpecsInput');
+        if (specsInput) specsInput.addEventListener('change', e => { if (e.target.files[0]) importSpecsFile(e.target.files[0]); specsInput.value = ''; });
     });
 
     // ========== СВОРАЧИВАНИЕ ВСЕГО БЛОКА НАБОРОВ (исправленная версия) ==========
