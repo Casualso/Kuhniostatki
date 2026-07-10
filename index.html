@@ -808,6 +808,14 @@ function importExcel(file) {
         alert('Библиотека Excel не загружена. Проверьте интернет и обновите страницу.');
         return;
     }
+
+    // Спрашиваем поставщика ЗАРАНЕЕ — он нужен и для новых товаров,
+    // и для того, чтобы понять какие товары обнулять при отсутствии в файле
+    let supplier = prompt('Поставщик, по которому загружается остаток (используется и для обнуления отсутствующих позиций):', 'Из 1С');
+    if (supplier === null) { return; } // отмена импорта
+    supplier = supplier.trim() || 'Из 1С';
+    if (!suppliers.includes(supplier)) suppliers.push(supplier);
+
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
@@ -817,7 +825,6 @@ function importExcel(file) {
             const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
             if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
 
-            // --- Поиск заголовка: приоритет "Конечный остаток" ---
             let headerRowIndex = -1, nameCol = -1, stockCol = -1, artikulCol = -1;
             for (let i = 0; i < Math.min(rows.length, 50); i++) {
                 const row = rows[i];
@@ -834,16 +841,11 @@ function importExcel(file) {
                     if (ta !== -1) artikulCol = ta;
                     else if (tn > 0) artikulCol = tn - 1;
                     headerRowIndex = i;
-                    console.log(`Заголовок в строке ${i+1}: имя ${nameCol+1}, остаток ${stockCol+1}, артикул ${artikulCol+1}`);
                     break;
                 }
             }
 
             if (headerRowIndex === -1 || nameCol === -1 || stockCol === -1) {
-                let preview = '';
-                for (let i = 0; i < Math.min(rows.length, 10); i++) {
-                    if (rows[i] && rows[i].length) preview += `Строка ${i+1}: ${rows[i].slice(0,8).join(' | ')}\n`;
-                }
                 if (!confirm('Колонки не найдены. Указать вручную?')) { alert('Отмена'); return; }
                 nameCol = parseInt(prompt('Колонка с названием (1=первая):', '5'),10)-1;
                 stockCol = parseInt(prompt('Колонка с остатком (1=первая):', '7'),10)-1;
@@ -854,15 +856,13 @@ function importExcel(file) {
             }
 
             const skipWords = ['итого','всего','склад','параметры','отбор','показать','дефицит','излишек','резерв','обеспечени','основной склад'];
-            const isSkipRow = (text) => {
-                const lower = text.toLowerCase();
-                return skipWords.some(w => lower.includes(w));
-            };
+            const isSkipRow = (text) => skipWords.some(w => text.toLowerCase().includes(w));
 
             let newItems = [];
             let updated = 0;
             let processed = 0;
-            let skippedItems = []; // массив для отчёта
+            let skippedItems = [];
+            const touchedIds = new Set(); // <-- товары, которые встретились в файле
 
             for (let i = headerRowIndex+1; i < rows.length; i++) {
                 const row = rows[i];
@@ -871,7 +871,6 @@ function importExcel(file) {
                 let name = row[nameCol]!==undefined ? String(row[nameCol]).trim() : '';
                 let artikul = (artikulCol>=0 && row[artikulCol]!==undefined) ? String(row[artikulCol]).trim() : '';
 
-                // --- Проверка причины пропуска ---
                 let skipReason = null;
                 if (!name) {
                     skipReason = 'Пустое наименование';
@@ -880,7 +879,6 @@ function importExcel(file) {
                 } else if (/^[\d\s\-]+$/.test(name)) {
                     skipReason = 'Название состоит только из цифр и пробелов';
                 } else {
-                    // проверяем остаток
                     let stockRaw = row[stockCol];
                     if (stockRaw === undefined || stockRaw === null || stockRaw === '') {
                         skipReason = 'Пустое значение остатка';
@@ -890,31 +888,26 @@ function importExcel(file) {
                         if (isNaN(stock)) {
                             skipReason = `Остаток не число: "${stockRaw}"`;
                         } else {
-                            // Всё хорошо - обрабатываем
                             const finalStock = Math.round(stock);
                             processed++;
 
-                            // Поиск существующего: сначала по точному имени
                             let existing = inventory.find(it => it.name === name);
                             if (!existing && artikul) {
                                 existing = inventory.find(it => it.artikul === artikul);
-                                if (existing && existing.name !== name) {
-                                    console.warn(`Артикул ${artikul} занят товаром "${existing.name}", для "${name}" создаём новый.`);
-                                    existing = null;
-                                }
+                                if (existing && existing.name !== name) existing = null;
                             }
                             if (existing) {
                                 existing.stock = finalStock;
                                 if (artikul && !existing.artikul) existing.artikul = artikul;
+                                touchedIds.add(existing.id); // <-- отметили как "встретился в файле"
                                 updated++;
                             } else {
                                 newItems.push({ name, artikul, stock: finalStock, category: detectCategoryFromName(name), subcategory: detectSubcategoryFromName(name) });
                             }
-                            continue; // успешно обработано, не добавляем в пропущенные
+                            continue;
                         }
                     }
                 }
-                // Если дошли сюда - позиция пропущена
                 skippedItems.push({
                     rowIndex: i+1,
                     name: name || '(пусто)',
@@ -923,28 +916,47 @@ function importExcel(file) {
                 });
             }
 
-            // --- Добавление новых товаров ---
+            // Добавление новых товаров
             let added = 0;
             if (newItems.length) {
-                let supplier = prompt('Поставщик для новых товаров:', 'Из 1С') || 'Из 1С';
-                if (!suppliers.includes(supplier)) suppliers.push(supplier);
                 const defMin = parseInt(document.getElementById('defaultMinStock').value,10) || 5;
                 for (const p of newItems) {
                     if (!categories.includes(p.category)) categories.push(p.category);
                     if (p.subcategory && !subcategories.includes(p.subcategory)) subcategories.push(p.subcategory);
-                    inventory.push({
+                    const newItem = {
                         id: Date.now()+'-'+Math.random().toString(36).substr(2,6),
                         name: p.name, artikul: p.artikul || '', category: p.category,
                         supplier, subcategory: p.subcategory, stock: p.stock, minStock: defMin,
                         price: null, weight: null, volume: null
-                    });
+                    };
+                    inventory.push(newItem);
+                    touchedIds.add(newItem.id);
                     added++;
                 }
             }
+
+            // === ОБНУЛЕНИЕ ОТСУТСТВУЮЩИХ ПОЗИЦИЙ ===
+            // Товары этого же поставщика, которые есть в базе, но НЕ встретились в файле —
+            // считаем что их остаток стал 0 (закончились, поэтому не попали в отчёт)
+            const missingItems = inventory.filter(it => it.supplier === supplier && !touchedIds.has(it.id) && it.stock !== 0);
+            let zeroedCount = 0;
+            if (missingItems.length > 0) {
+                const preview = missingItems.slice(0, 20).map(it => `• ${it.name}${it.artikul ? ' (арт. '+it.artikul+')' : ''} — было ${it.stock}`).join('\n');
+                const more = missingItems.length > 20 ? `\n...и ещё ${missingItems.length - 20}` : '';
+                const doZero = confirm(
+                    `Поставщик «${supplier}»: в файле не найдено ${missingItems.length} товаров, которые есть в базе.\n` +
+                    `Обычно это значит, что они закончились и попали в отчёт с нулевым остатком (нулевые строки 1С часто не выгружает).\n\n` +
+                    `Обнулить остаток для этих товаров?\n\n${preview}${more}`
+                );
+                if (doZero) {
+                    missingItems.forEach(it => { it.stock = 0; });
+                    zeroedCount = missingItems.length;
+                }
+            }
+
             saveAll();
 
-            // --- Формирование подробного отчёта о пропущенных ---
-            let report = `✅ Импорт завершён!\nДобавлено: ${added}\nОбновлено: ${updated}\nОбработано строк с данными: ${processed}\n`;
+            let report = `✅ Импорт завершён!\nПоставщик: ${supplier}\nДобавлено: ${added}\nОбновлено: ${updated}\nОбнулено (отсутствовали в файле): ${zeroedCount}\nОбработано строк с данными: ${processed}\n`;
             if (skippedItems.length === 0) {
                 report += `\n📌 Пропущенных позиций нет.`;
             } else {
@@ -957,7 +969,7 @@ function importExcel(file) {
                 if (skippedItems.length > 30) {
                     report += `\n... и ещё ${skippedItems.length - 30} пропущенных. Полный список в консоли (F12).`;
                 }
-                console.table(skippedItems); // удобная таблица в консоли
+                console.table(skippedItems);
             }
             alert(report);
         } catch(err) {
