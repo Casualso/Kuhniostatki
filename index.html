@@ -1315,6 +1315,33 @@
                 text-align: center;
             }
         }
+
+        /* ---------- НОВЫЙ СТИЛЬ для кнопки удаления группы поставок ---------- */
+        .delivery-group-delete-btn {
+            background: none;
+            border: 1px solid #fecaca;
+            color: #ef4444;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            padding: 3px 10px;
+            cursor: pointer;
+            margin-left: 8px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .delivery-group-delete-btn:hover {
+            background: #fee2e2;
+        }
+        @media (max-width: 640px) {
+            .delivery-group-header {
+                flex-wrap: wrap;
+            }
+            .delivery-group-delete-btn {
+                margin-left: 0;
+                width: 100%;
+                text-align: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1525,6 +1552,7 @@
                     <option value="date">По дате</option>
                     <option value="supplier">По поставщику</option>
                     <option value="status">По статусу</option>
+                    <option value="batch">По загруженному файлу</option>  <!-- НОВЫЙ ПУНКТ -->
                     <option value="none">Без группировки</option>
                 </select>
                 <label style="font-size:0.78rem; color:#475569;">Статус:</label>
@@ -1683,7 +1711,7 @@
         let purchaseGroupBy = 'supplier';
         let collapsedPurchaseGroups = new Set();
         let selectedPurchaseIds = new Set();
-        let lastSelectedPurchaseCheckbox = null; // <-- добавлено для Shift+клик
+        let lastSelectedPurchaseCheckbox = null;
 
         // ------------------- Ближайшие поставки -------------------
         let deliveries = [];
@@ -2827,8 +2855,8 @@
                     for (let [category, subMap] of catMap.entries()) {
                         const subGroups = [];
                         for (let [subcategory, subItems] of subMap.entries()) {
-                            subGroups.push({ name: subcategory, type: 'subcategory', children: subItems.map(i => ({
-                                    type: 'item', data: i })) });
+                            subGroups.push({ name: subcategory, type: 'subcategory', children: subItems.map(i => ({ type: 'item',
+                                    data: i })) });
                         }
                         catGroups.push({ name: category, type: 'category', children: subGroups });
                     }
@@ -4081,11 +4109,23 @@
             saveAll();
         }
 
+        // ---- НОВАЯ ФУНКЦИЯ ГРУППИРОВКИ С ПОДПИСЬЮ ДЛЯ BATCH ----
         function getDeliveryGroupKey(entry) {
             if (deliveryGroupBy === 'supplier') return entry.supplier || '(без поставщика)';
             if (deliveryGroupBy === 'status') return deliveryStatusLabel(entry).text;
             if (deliveryGroupBy === 'date') return entry.date || '(без даты)';
+            if (deliveryGroupBy === 'batch') return entry.importBatch || '(добавлено вручную)';
             return 'all';
+        }
+
+        function getDeliveryGroupDisplayLabel(key, groupEntries) {
+            if (deliveryGroupBy === 'date' && key !== '(без даты)') return formatDateRu(key);
+            if (deliveryGroupBy === 'batch') {
+                if (key === '(добавлено вручную)') return key;
+                const withLabel = groupEntries.find(e => e.importBatchLabel);
+                return withLabel ? withLabel.importBatchLabel : key;
+            }
+            return key;
         }
 
         function getFilteredDeliveries() {
@@ -4139,6 +4179,7 @@
                 </div>`;
         }
 
+        // ---- ОБНОВЛЁННАЯ renderDeliveries С ГРУППИРОВКОЙ ПО BATCH ----
         function renderDeliveries() {
             const container = document.getElementById('deliveryListContainer');
             const empty = document.getElementById('deliveryEmpty');
@@ -4184,24 +4225,27 @@
                     const groupEntries = groups.get(key);
                     const isCollapsed = collapsedDeliveryGroups.has(key);
                     const totalQty = groupEntries.reduce((s, e) => s + (e.qty || 0), 0);
-                    const displayKey = deliveryGroupBy === 'date' && key !== '(без даты)' ? formatDateRu(key) :
-                        key;
+                    const displayKey = getDeliveryGroupDisplayLabel(key, groupEntries);
                     const hasOverdueInGroup = groupEntries.some(e => isOverdue(e));
+                    const receivedCountInGroup = groupEntries.filter(e => e.status === 'received').length;
                     return `<div class="delivery-group ${isCollapsed ? '' : 'open'}" data-group-key="${escapeHtml(key)}">
-                            <div class="delivery-group-header">
-                                <span class="delivery-group-toggle">▶</span>
-                                <span class="delivery-group-title">${hasOverdueInGroup ? '⏰ ' : ''}${escapeHtml(displayKey)}</span>
-                                <span class="delivery-group-count">${groupEntries.length} поз. · ${totalQty} шт</span>
-                            </div>
-                            <div class="delivery-group-body" style="${isCollapsed ? '' : 'display:block;'}">
-                                ${groupEntries.map(buildDeliveryRow).join('')}
-                            </div>
-                        </div>`;
+                        <div class="delivery-group-header">
+                            <span class="delivery-group-toggle">▶</span>
+                            <span class="delivery-group-title">${hasOverdueInGroup ? '⏰ ' : ''}${escapeHtml(displayKey)}</span>
+                            <span class="delivery-group-count">${groupEntries.length} поз. · ${totalQty} шт</span>
+                            <button class="delivery-group-delete-btn" data-group-key="${escapeHtml(key)}" title="Удалить эту группу из списка поставок">🗑 Удалить группу</button>
+                        </div>
+                        <div class="delivery-group-body" style="${isCollapsed ? '' : 'display:block;'}">
+                            ${groupEntries.map(buildDeliveryRow).join('')}
+                        </div>
+                    </div>`;
                 }).join('');
             }
 
+            // Обработчики: клик по заголовку (кроме кнопки удаления)
             container.querySelectorAll('.delivery-group-header').forEach(header => {
-                header.addEventListener('click', () => {
+                header.addEventListener('click', (e) => {
+                    if (e.target.closest('.delivery-group-delete-btn')) return;
                     const groupEl = header.closest('.delivery-group');
                     const key = groupEl.dataset.groupKey;
                     const body = groupEl.querySelector('.delivery-group-body');
@@ -4218,6 +4262,13 @@
                     localStorage.setItem('collapsedDeliveryGroups', JSON.stringify([...collapsedDeliveryGroups]));
                 });
             });
+
+            // Кнопки удаления групп
+            container.querySelectorAll('.delivery-group-delete-btn').forEach(btn => {
+                btn.addEventListener('click', e => { e.stopPropagation();
+                    deleteDeliveryGroup(btn.dataset.groupKey); });
+            });
+
             container.querySelectorAll('.delivery-qty-input').forEach(input => {
                 input.addEventListener('change', () => updateDeliveryQty(input.dataset.id, input.value));
                 input.addEventListener('click', e => e.stopPropagation());
@@ -4240,6 +4291,23 @@
             });
         }
 
+        // ---- НОВАЯ ФУНКЦИЯ УДАЛЕНИЯ ГРУППЫ ПОСТАВОК ----
+        function deleteDeliveryGroup(key) {
+            const groupEntries = deliveries.filter(d => getDeliveryGroupKey(d) === key);
+            if (groupEntries.length === 0) return;
+            const displayLabel = getDeliveryGroupDisplayLabel(key, groupEntries);
+            const receivedCount = groupEntries.filter(d => d.status === 'received').length;
+            let msg = `Удалить группу «${displayLabel}» (${groupEntries.length} поз.) из списка поставок?`;
+            if (receivedCount > 0) {
+                msg += `\n\n⚠️ Внимание: ${receivedCount} из них уже отмечены как «Получено» — их остаток уже был добавлен в карточки товаров. Удаление из этого списка НЕ уменьшит остаток обратно.`;
+            }
+            if (confirm(msg)) {
+                const idsToRemove = new Set(groupEntries.map(d => d.id));
+                deliveries = deliveries.filter(d => !idsToRemove.has(d.id));
+                saveAll();
+            }
+        }
+
         function expandAllDeliveryGroups() {
             collapsedDeliveryGroups.clear();
             localStorage.setItem('collapsedDeliveryGroups', JSON.stringify([]));
@@ -4254,7 +4322,7 @@
             renderDeliveries();
         }
 
-        // ---- Импорт поставок из Excel/CSV (УПД / накладная) ----
+        // ---- ИМПОРТ ПОСТАВОК С ПЕРЕДАЧЕЙ ИМЕНИ ФАЙЛА В processDeliveryRows ----
         function importDeliveryFile(file) {
             const ext = file.name.split('.').pop().toLowerCase();
             if (ext === 'csv') importDeliveryCsv(file);
@@ -4290,7 +4358,8 @@
             return { headerRowIndex, nameCol, qtyCol, artikulCol };
         }
 
-        function processDeliveryRows(rows, defaultSupplier, defaultDate) {
+        // ---- ОБНОВЛЁННАЯ processDeliveryRows С ПАРАМЕТРОМ fileName ----
+        function processDeliveryRows(rows, defaultSupplier, defaultDate, fileName) {
             const { headerRowIndex, nameCol, qtyCol, artikulCol } = findDeliveryHeaderColumns(rows);
             if (headerRowIndex === -1) {
                 alert(
@@ -4301,6 +4370,12 @@
             const skipWords = ['итого', 'всего', 'склад', 'параметры', 'отбор', 'показать', 'основной склад'];
             const isSkipRow = (text) => skipWords.some(w => text.toLowerCase().includes(w));
             const defMin = parseInt(document.getElementById('defaultMinStock')?.value, 10) || 5;
+
+            // Уникальный ID партии + понятная подпись (имя файла + дата/время загрузки)
+            const batchId = 'import-' + Date.now();
+            const nowDT = new Date();
+            const batchLabel =
+                `${fileName || 'Файл'} • ${nowDT.toLocaleDateString('ru-RU')} ${nowDT.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' })}`;
 
             let added = 0,
                 createdNew = [],
@@ -4350,7 +4425,8 @@
                     date: defaultDate,
                     status: 'pending',
                     note: '',
-                    importBatch: 'import-' + Date.now()
+                    importBatch: batchId,
+                    importBatchLabel: batchLabel
                 });
                 added++;
             }
@@ -4391,7 +4467,7 @@
                     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                     const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
                     if (!rows || rows.length < 2) { alert('Файл пуст'); return; }
-                    const result = processDeliveryRows(rows, supplier, date);
+                    const result = processDeliveryRows(rows, supplier, date, file.name); // передаём имя файла
                     if (result) { saveAll();
                         showDeliveryImportReport(result); }
                 } catch (err) { console.error(err);
@@ -4422,7 +4498,7 @@
                 const lines = text.split(/\r?\n/).filter(l => l.trim());
                 const rows = lines.map(parseCSVLine);
                 if (rows.length < 2) { alert('Файл пуст'); return; }
-                const result = processDeliveryRows(rows, supplier, date);
+                const result = processDeliveryRows(rows, supplier, date, file.name); // передаём имя файла
                 if (result) { saveAll();
                     showDeliveryImportReport(result); }
             }
@@ -4530,6 +4606,9 @@
             await loadData();
             const purchaseGroupBySelect = document.getElementById('purchaseGroupBy');
             if (purchaseGroupBySelect) purchaseGroupBySelect.value = purchaseGroupBy;
+            // Устанавливаем значение deliveryGroupBy из localStorage
+            const deliveryGroupBySelect = document.getElementById('deliveryGroupBy');
+            if (deliveryGroupBySelect) deliveryGroupBySelect.value = deliveryGroupBy;
             saveAll();
             handleScanParameter();
 
